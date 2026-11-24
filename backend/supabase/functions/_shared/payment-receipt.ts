@@ -95,7 +95,12 @@ export function paymentReceiptHtml(
 </head>
 <body>
 <main>
-  <header><div><div class="brand">MyTilesTrial</div><div class="muted">TrinoGenz</div></div>
+  <header>
+    <div>
+      <div class="brand">MyTilesTrial</div>
+      <div class="muted">TrinoGenz</div>
+      <div class="muted">GSTIN 33AAKCT4699M1ZI</div>
+    </div>
     <span class="badge${mode === "paid" ? "" : " preview"}">${mode === "paid" ? "Paid" : mode === "sample" ? "Sample only" : "Test mode"}</span>
   </header>
   <h1>${title}</h1>
