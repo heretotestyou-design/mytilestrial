@@ -2,12 +2,17 @@ name: CD
 
 on:
   workflow_dispatch:
+    inputs:
+      promote_to_production:
+        description: Deploy to production after this commit passes staging
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: mytilestrial-production
+  group: mytilestrial-deployment
   cancel-in-progress: false
 
 jobs:
@@ -16,99 +21,19 @@ jobs:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/ci.yml
 
-  deploy:
-    name: Deploy to production
+  staging:
+    name: Deploy to staging
     needs: verify
-    runs-on: ubuntu-latest
-    environment: production
-    env:
-      SUPABASE_API_HOST: ${{ vars.SUPABASE_API_HOST }}
-      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
-      NEXT_PUBLIC_SUPPORT_WHATSAPP: ${{ vars.NEXT_PUBLIC_SUPPORT_WHATSAPP }}
-      GATEWAY_PUBLIC_SCHEME: https
-      GATEWAY_TRUSTED_PROXY_CIDR: ${{ vars.GATEWAY_TRUSTED_PROXY_CIDR }}
-      GATEWAY_PORT: ${{ vars.GATEWAY_PORT }}
-      FRONTEND_REPLICAS: ${{ vars.FRONTEND_REPLICAS }}
-      DOCKER_HOST: ssh://mytilestrial-deploy
-      FRONTEND_IMAGE: mytilestrial-frontend:${{ github.sha }}
-      GATEWAY_IMAGE: mytilestrial-gateway:${{ github.sha }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
-        with:
-          version: latest
-      - name: Connect to the Docker host
-        env:
-          DEPLOY_SSH_HOST: ${{ vars.DEPLOY_SSH_HOST }}
-          DEPLOY_SSH_USER: ${{ vars.DEPLOY_SSH_USER }}
-          DEPLOY_SSH_PORT: ${{ vars.DEPLOY_SSH_PORT }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
-        run: |
-          set -euo pipefail
-          [[ "$DEPLOY_SSH_HOST" =~ ^[[:alnum:].-]+$ ]]
-          [[ "$DEPLOY_SSH_USER" =~ ^[[:alnum:]_-]+$ ]]
-          port="${DEPLOY_SSH_PORT:-22}"
-          [[ "$port" =~ ^[0-9]+$ ]]
-          test -n "$DEPLOY_SSH_KEY" && test -n "$DEPLOY_SSH_KNOWN_HOSTS"
-          umask 077
-          mkdir -p ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/mytilestrial_deploy
-          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/mytilestrial_known_hosts
-          cat >> ~/.ssh/config <<EOF
-          Host mytilestrial-deploy
-            HostName $DEPLOY_SSH_HOST
-            User $DEPLOY_SSH_USER
-            Port $port
-            IdentityFile ~/.ssh/mytilestrial_deploy
-            UserKnownHostsFile ~/.ssh/mytilestrial_known_hosts
-            IdentitiesOnly yes
-            StrictHostKeyChecking yes
-            BatchMode yes
-          EOF
-          docker info --format '{{.ServerVersion}}'
-      - name: Build release images
-        run: |
-          set -euo pipefail
-          for name in SUPABASE_API_HOST SUPABASE_PROJECT_REF NEXT_PUBLIC_SUPABASE_ANON_KEY NEXT_PUBLIC_SITE_URL GATEWAY_TRUSTED_PROXY_CIDR; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "::error::Missing production configuration for $name"
-              exit 1
-            fi
-          done
-          docker compose build
-      - name: Deploy Supabase migrations and API
-        working-directory: backend
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
-        run: |
-          set -euo pipefail
-          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD ADMIN_EMAILS; do
-            if [[ -z "${!name:-}" ]]; then
-              echo "::error::Missing production secret $name"
-              exit 1
-            fi
-          done
-          supabase link --project-ref "$SUPABASE_PROJECT_REF"
-          supabase db push --linked --yes
-          config=$(mktemp)
-          trap 'rm -f "$config"' EXIT
-          printf 'ADMIN_EMAILS=%s\n' "$ADMIN_EMAILS" > "$config"
-          supabase secrets set --project-ref "$SUPABASE_PROJECT_REF" --env-file "$config"
-          supabase functions deploy api --use-api --project-ref "$SUPABASE_PROJECT_REF"
-      - name: Roll out frontend and gateway
-        env:
-          API_GATEWAY_SHARED_SECRET: ${{ secrets.API_GATEWAY_SHARED_SECRET }}
-        run: |
-          set -euo pipefail
-          docker compose up -d --no-build --wait --wait-timeout 120
-          docker compose exec -T gateway wget -q -O - http://127.0.0.1:8080/healthz
-          docker compose exec -T gateway wget -q -O - http://127.0.0.1:8080/api/v1/health
-          docker compose exec -T gateway wget -q -O /dev/null \
-            --header="apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" http://127.0.0.1:8080/api/v1/templates
+    uses: ./.github/workflows/deploy-environment.yml
+    with:
+      target: staging
+    secrets: inherit
+
+  production:
+    name: Promote to production
+    needs: staging
+    if: inputs.promote_to_production
+    uses: ./.github/workflows/deploy-environment.yml
+    with:
+      target: production
+    secrets: inherit

@@ -1,0 +1,166 @@
+name: Deploy environment
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy application
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.target }}
+      url: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+    env:
+      DEPLOY_TARGET: ${{ inputs.target }}
+      STAGING_SUPABASE_PROJECT_REF: ${{ vars.STAGING_SUPABASE_PROJECT_REF }}
+      COMPOSE_PROJECT_NAME: ${{ inputs.target == 'staging' && 'mytilestrial-staging' || 'mytilestrial' }}
+      SUPABASE_API_HOST: ${{ vars.SUPABASE_API_HOST }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+      NEXT_PUBLIC_SUPPORT_WHATSAPP: ${{ vars.NEXT_PUBLIC_SUPPORT_WHATSAPP }}
+      GATEWAY_PUBLIC_SCHEME: https
+      GATEWAY_TRUSTED_PROXY_CIDR: ${{ vars.GATEWAY_TRUSTED_PROXY_CIDR }}
+      GATEWAY_PORT: ${{ vars.GATEWAY_PORT || (inputs.target == 'staging' && '8081' || '8080') }}
+      FRONTEND_REPLICAS: ${{ vars.FRONTEND_REPLICAS }}
+      DOCKER_HOST: ssh://mytilestrial-deploy
+      FRONTEND_IMAGE: mytilestrial-frontend:${{ inputs.target }}-${{ github.sha }}
+      GATEWAY_IMAGE: mytilestrial-gateway:${{ inputs.target }}-${{ github.sha }}
+    steps:
+      - name: Verify deployment target
+        run: |
+          set -euo pipefail
+          for name in SUPABASE_API_HOST SUPABASE_PROJECT_REF STAGING_SUPABASE_PROJECT_REF NEXT_PUBLIC_SUPABASE_ANON_KEY NEXT_PUBLIC_SITE_URL GATEWAY_TRUSTED_PROXY_CIDR; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing deployment configuration for $name"
+              exit 1
+            fi
+          done
+
+          case "$DEPLOY_TARGET" in
+            staging)
+              if [[ "$SUPABASE_PROJECT_REF" != "$STAGING_SUPABASE_PROJECT_REF" || "$SUPABASE_API_HOST" != "$STAGING_SUPABASE_PROJECT_REF.supabase.co" ]]; then
+                echo "::error::Staging must use the dedicated staging Supabase project and its default API hostname"
+                exit 1
+              fi
+              ;;
+            production)
+              if [[ "$SUPABASE_PROJECT_REF" == "$STAGING_SUPABASE_PROJECT_REF" || "$SUPABASE_API_HOST" == "$STAGING_SUPABASE_PROJECT_REF.supabase.co" ]]; then
+                echo "::error::Production cannot use the staging Supabase project"
+                exit 1
+              fi
+              ;;
+            *) echo "::error::Unsupported deployment target"; exit 1 ;;
+          esac
+          [[ "$NEXT_PUBLIC_SITE_URL" =~ ^https://[[:alnum:].-]+(:[0-9]+)?/?$ ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
+        with:
+          version: latest
+      - name: Connect to the Docker host
+        env:
+          DEPLOY_SSH_HOST: ${{ vars.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ vars.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_PORT: ${{ vars.DEPLOY_SSH_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_SSH_HOST" =~ ^[[:alnum:].-]+$ ]]
+          [[ "$DEPLOY_SSH_USER" =~ ^[[:alnum:]_-]+$ ]]
+          port="${DEPLOY_SSH_PORT:-22}"
+          [[ "$port" =~ ^[0-9]+$ ]]
+          test -n "$DEPLOY_SSH_KEY" && test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/mytilestrial_deploy
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > ~/.ssh/mytilestrial_known_hosts
+          cat >> ~/.ssh/config <<EOF
+          Host mytilestrial-deploy
+            HostName $DEPLOY_SSH_HOST
+            User $DEPLOY_SSH_USER
+            Port $port
+            IdentityFile ~/.ssh/mytilestrial_deploy
+            UserKnownHostsFile ~/.ssh/mytilestrial_known_hosts
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            BatchMode yes
+          EOF
+          docker info --format '{{.ServerVersion}}'
+      - name: Build release images
+        run: docker compose build
+      - name: Deploy Supabase migrations and API
+        id: backend
+        working-directory: backend
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
+          RAZORPAY_TEST_KEY_ID: ${{ inputs.target == 'staging' && secrets.RAZORPAY_TEST_KEY_ID || '' }}
+          RAZORPAY_TEST_KEY_SECRET: ${{ inputs.target == 'staging' && secrets.RAZORPAY_TEST_KEY_SECRET || '' }}
+          RAZORPAY_TEST_WEBHOOK_SECRET: ${{ inputs.target == 'staging' && secrets.RAZORPAY_TEST_WEBHOOK_SECRET || '' }}
+        run: |
+          set -euo pipefail
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD ADMIN_EMAILS; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing deployment secret $name"
+              exit 1
+            fi
+          done
+          umask 077
+          config=$(mktemp)
+          trap 'rm -f "$config"' EXIT
+          printf 'ADMIN_EMAILS=%s\n' "$ADMIN_EMAILS" > "$config"
+          if [[ "$DEPLOY_TARGET" == staging ]]; then
+            provider=dummy
+            if [[ -n "$RAZORPAY_TEST_KEY_ID$RAZORPAY_TEST_KEY_SECRET$RAZORPAY_TEST_WEBHOOK_SECRET" ]]; then
+              if [[ "$RAZORPAY_TEST_KEY_ID" != rzp_test_* || -z "$RAZORPAY_TEST_KEY_SECRET" ]]; then
+                echo "::error::Staging Razorpay requires a test-mode key ID and key secret"
+                exit 1
+              fi
+              provider=razorpay
+              printf 'RAZORPAY_KEY_ID=%s\nRAZORPAY_KEY_SECRET=%s\nRAZORPAY_WEBHOOK_SECRET=%s\n' \
+                "$RAZORPAY_TEST_KEY_ID" "$RAZORPAY_TEST_KEY_SECRET" "$RAZORPAY_TEST_WEBHOOK_SECRET" >> "$config"
+            fi
+            echo "payment-provider=$provider" >> "$GITHUB_OUTPUT"
+            printf 'PAYMENT_PROVIDER=%s\nTEST_PAYMENT_EMAILS=%s\nMYTILESTRIAL_SITE_URL=%s\nALLOWED_ORIGINS=%s\n' \
+              "$provider" "$ADMIN_EMAILS" "${NEXT_PUBLIC_SITE_URL%/}" "${NEXT_PUBLIC_SITE_URL%/}" >> "$config"
+          fi
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          supabase db push --linked --yes
+          supabase secrets set --project-ref "$SUPABASE_PROJECT_REF" --env-file "$config"
+          supabase functions deploy api --use-api --project-ref "$SUPABASE_PROJECT_REF"
+      - name: Roll out frontend and gateway
+        env:
+          API_GATEWAY_SHARED_SECRET: ${{ secrets.API_GATEWAY_SHARED_SECRET }}
+        run: |
+          set -euo pipefail
+          docker compose up -d --no-build --wait --wait-timeout 120
+          docker compose exec -T gateway wget -q -O - http://127.0.0.1:8080/healthz
+          docker compose exec -T gateway wget -q -O - http://127.0.0.1:8080/api/v1/health
+          docker compose exec -T gateway wget -q -O /dev/null \
+            --header="apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" http://127.0.0.1:8080/api/v1/templates
+      - name: Verify public HTTPS ingress
+        env:
+          STAGING_PAYMENT_PROVIDER: ${{ steps.backend.outputs.payment-provider }}
+        run: |
+          set -euo pipefail
+          site="${NEXT_PUBLIC_SITE_URL%/}"
+          curl --fail --silent --show-error --retry 4 --max-time 15 "$site/healthz"
+          curl --fail --silent --show-error --retry 4 --max-time 15 "$site/api/v1/health"
+
+          if [[ "$DEPLOY_TARGET" == staging ]]; then
+            curl --fail --silent --show-error --retry 4 --max-time 15 \
+              -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" "$site/api/v1/catalog" |
+              jq -e --arg provider "$STAGING_PAYMENT_PROVIDER" \
+                '.payments.provider == $provider and ($provider != "dummy" or .payments.test_mode == true)'
+          fi

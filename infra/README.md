@@ -22,18 +22,22 @@ The Docker build uses `NEXT_PUBLIC_API_URL=/api`. Existing standalone frontend d
 
 The **CI** workflow runs on pushes and pull requests. It scans for committed secrets, checks frontend and backend code quality, runs the frontend and backend test suites in order, then builds the Docker stack and tests the gateway. Download the frontend and backend JUnit reports from the workflow run. CI uses disposable build fixtures and requires no production credentials.
 
-After configuring the destination, open **Actions ? CD ? Run workflow** on `main`. CD runs CI against the selected commit before opening the production environment. It then connects to the Docker host over SSH with host-key verification, builds the release images, deploys Supabase migrations and the Edge Function, and rolls out the frontend and gateway. Store production credentials in GitHub environment secrets or Supabase runtime secrets as appropriate.
+Open **Actions ? CD ? Run workflow** on `main` to run CI and deploy the selected commit to staging. The workflow checks the staging site over HTTPS and verifies that its catalog reports the configured staging payment provider. Select **promote_to_production** to deploy the same commit to production after staging succeeds. GitHub environment reviewers, if configured on `production`, can review staging before approving the promotion.
 
-Configure the repository's `production` environment with these values.
+### Configure staging and production
+
+Create a separate Supabase project and HTTPS origin for staging. Set the repository Actions variable `STAGING_SUPABASE_PROJECT_REF` to its project reference. In the staging environment, set `SUPABASE_PROJECT_REF` to the same reference and `SUPABASE_API_HOST` to `<staging-project-ref>.supabase.co`. This check keeps staging pointed at its own database. Add the staging site's `/auth/callback` and `/reset-password` URLs to the staging Supabase Auth redirect allowlist. By default, staging uses the dummy payment provider and permits test purchases for addresses in its `ADMIN_EMAILS` list. To exercise Razorpay checkout and guest activation, set `RAZORPAY_TEST_KEY_ID` and `RAZORPAY_TEST_KEY_SECRET` in the GitHub staging environment. The workflow accepts only a key ID beginning with `rzp_test_`. Set `RAZORPAY_TEST_WEBHOOK_SECRET` when using a Razorpay test webhook pointed at the staging project.
+
+Configure the following values separately in the GitHub `staging` and `production` environments.
 
 | Kind | Names |
 | --- | --- |
 | Variables | `DEPLOY_SSH_HOST`, `DEPLOY_SSH_USER`, `SUPABASE_API_HOST`, `SUPABASE_PROJECT_REF`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL`, `GATEWAY_TRUSTED_PROXY_CIDR` |
-| Optional variables | `DEPLOY_SSH_PORT` (22), `GATEWAY_PORT` (8080), `FRONTEND_REPLICAS` (2), `NEXT_PUBLIC_SUPPORT_WHATSAPP` |
+| Optional variables | `DEPLOY_SSH_PORT` (22), `GATEWAY_PORT` (8081 in staging, 8080 in production), `FRONTEND_REPLICAS` (2), `NEXT_PUBLIC_SUPPORT_WHATSAPP` |
 | Secrets | `DEPLOY_SSH_KEY`, `DEPLOY_SSH_KNOWN_HOSTS`, `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `ADMIN_EMAILS` |
 | Optional secret | `API_GATEWAY_SHARED_SECRET` |
 
-Use a Linux host with Docker Engine and a dedicated deployment account that can access Docker. Point its HTTPS ingress at `127.0.0.1:8080` or the configured gateway port. Preserve the public Host header, replace untrusted forwarded headers, and pass the client IP in `X-Forwarded-For`. Set `GATEWAY_TRUSTED_PROXY_CIDR` to the actual ingress peer address as seen by NGINX inside the container, typically the Docker bridge gateway address with a `/32` mask. Run an external health check at `/healthz` and `/api/v1/health`.
+Use a Linux host with Docker Engine and a dedicated deployment account that can access Docker. Point each HTTPS origin at its configured loopback gateway port. Separate Compose project names and image tags keep the environments isolated when they share a Docker host. Use distinct gateway ports on a shared host. Preserve the public Host header, replace untrusted forwarded headers, and pass the client IP in `X-Forwarded-For`. Set `GATEWAY_TRUSTED_PROXY_CIDR` to the actual ingress peer address as seen by NGINX inside the container, typically the Docker bridge gateway address with a `/32` mask. Run an external health check at `/healthz` and `/api/v1/health`.
 
 After browser traffic has switched to the gateway, use a random 64-character hexadecimal `API_GATEWAY_SHARED_SECRET` in both the GitHub environment and the Supabase Edge Function secrets to enforce the gateway at the origin. Deploy the gateway with the secret before enabling it in Supabase. Direct health checks, existing signed Razorpay webhooks and authenticated internal callbacks continue to work. If rolling back to a frontend that calls Supabase directly, remove the Supabase gateway secret first.
 
