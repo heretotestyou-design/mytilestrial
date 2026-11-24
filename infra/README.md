@@ -41,4 +41,19 @@ Use a Linux host with Docker Engine and a dedicated deployment account that can 
 
 After browser traffic has switched to the gateway, use a random 64-character hexadecimal `API_GATEWAY_SHARED_SECRET` in both the GitHub environment and the Supabase Edge Function secrets to enforce the gateway at the origin. Deploy the gateway with the secret before enabling it in Supabase. Direct health checks, existing signed Razorpay webhooks and authenticated internal callbacks continue to work. If rolling back to a frontend that calls Supabase directly, remove the Supabase gateway secret first.
 
+## Application tests and health reports
+
+CI runs frontend tests, Deno backend tests, disposable PostgreSQL integration tests, monitor tests, and the Docker gateway smoke test.
+
+| Coverage | Checks |
+| --- | --- |
+| Frontend | Sign-in and OTP, session guards, landing and website checkout, payment result screens, templates and studio workflows |
+| Razorpay | Captured payments, order and amount matching, currency checks, authorised capture, and tampered signatures |
+| PostgreSQL | GST totals, confirming a payment once, rollover and expiry on plan changes, guest checkout settlement, and render charges and refunds |
+| Production monitor | Homepage, landing, login, API health, pricing catalog, templates, and authentication on account and Floor Planner routes |
+
+The **App health monitor** checks production hourly and prepares a daily report at **9:07 AM IST**. The report includes the latest checks and scheduled run failures over the previous 24 hours. GitHub Actions archives each report. A manual workflow run previews the report in Actions. The probes use public pages and signed-out API requests.
+
+Set repository Actions variables `MONITOR_SITE_URL` and `MONITOR_API_URL` to the production site and API base URLs. To enable Gmail delivery, set the repository Actions secrets `MONITOR_GMAIL_ADDRESS`, `MONITOR_GMAIL_APP_PASSWORD`, and `MONITOR_GMAIL_RECIPIENT`. Use a Gmail sender with 2-Step Verification and a dedicated app password. [Google account help](https://support.google.com/mail/answer/185833)
+
 [NGINX reverse proxy and cache directives](https://nginx.org/en/docs/http/ngx_http_proxy_module.html) ? [Supabase Edge Function deployments](https://supabase.com/docs/guides/functions/deploy)

@@ -112,16 +112,50 @@ jobs:
         with:
           deno-version: v2.x
       - name: Run Deno tests
-        run: deno test --allow-env=ALLOWED_ORIGINS --junit-path="$RUNNER_TEMP/backend-tests.xml" supabase/functions
+        run: deno test --allow-env=ALLOWED_ORIGINS,RAZORPAY_KEY_ID,RAZORPAY_KEY_SECRET --junit-path="$RUNNER_TEMP/backend-tests.xml" supabase/functions
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: backend-test-results
           path: ${{ runner.temp }}/backend-tests.xml
 
+  database-tests:
+    name: Database test cases
+    needs: backend-tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Apply migrations and test wallet, checkout, expiry, and refunds
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          for script in backend/tests/bootstrap.sql backend/supabase/migrations/*.sql backend/tests/wallet.sql; do
+            echo "Running $script"
+            docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < "$script"
+          done
+
+  monitor-tests:
+    name: Health monitor test cases
+    needs: database-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 -B -m unittest discover -s infra/monitoring -v
+
   gateway-tests:
     name: Production build and gateway test cases
-    needs: backend-tests
+    needs: monitor-tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
