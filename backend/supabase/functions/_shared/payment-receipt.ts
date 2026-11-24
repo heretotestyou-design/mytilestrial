@@ -38,6 +38,7 @@ export function paymentReceiptHtml(
   const base = payment.base_amount_paise;
   const hasBreakdown = base !== null && base >= 0 && base <= payment.amount_paise;
   const gst = hasBreakdown ? payment.amount_paise - base : null;
+  const gstLabel = base !== null && gst === Math.round(base * 18 / 100) ? "GST (18%)" : "GST";
   const pack = escape(payment.pack_id.replaceAll("-", " "));
   const detail = (label: string, value: string) => `<div><dt>${label}</dt><dd>${escape(value)}</dd></div>`;
   const line = (label: string, value: string) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
@@ -119,7 +120,7 @@ export function paymentReceiptHtml(
   </table>
   <dl class="totals">
     ${hasBreakdown ? line("Subtotal", format(base)) : ""}
-    ${gst !== null && gst > 0 ? line("GST", format(gst)) : ""}
+    ${gst !== null && gst > 0 ? line(gstLabel, format(gst)) : ""}
     <div class="total"><dt>${mode === "sample" ? "Example total" : mode === "test" ? "Test total" : "Total paid"}</dt><dd>${format(payment.amount_paise)}</dd></div>
   </dl>
   <footer class="muted">

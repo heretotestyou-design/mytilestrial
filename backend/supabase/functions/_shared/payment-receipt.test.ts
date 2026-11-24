@@ -23,6 +23,7 @@ Deno.test("renders amounts from the confirmed record and escapes buyer details",
     gstin: null,
   });
   assert.match(html, /24 November 2026/);
+  assert.match(html, /GST \(18%\)/);
   assert.match(html, /GSTIN 33AAKCT4699M1ZI/);
   assert.match(html, /₹4,999\.00/);
   assert.match(html, /₹899\.82/);
@@ -47,6 +48,13 @@ Deno.test("labels test payments and sample invoices explicitly", () => {
   assert.doesNotMatch(testReceipt, /Total paid/);
   const sample = paymentReceiptHtml(payment, null, "sample");
   assert.match(sample, /Sample only/);
+  assert.match(sample, /GST \(18%\)/);
   assert.match(sample, /GSTIN 33AAKCT4699M1ZI/);
   assert.match(sample, /No payment was made/);
+});
+
+Deno.test("keeps the recorded tax amount for payments with a different rate", () => {
+  const html = paymentReceiptHtml({ ...payment, amount_paise: 549890 }, null);
+  assert.match(html, /<dt>GST<\/dt>/);
+  assert.doesNotMatch(html, /GST \(18%\)/);
 });
