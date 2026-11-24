@@ -20,7 +20,9 @@ The Docker build uses `NEXT_PUBLIC_API_URL=/api`. Existing standalone frontend d
 
 ## Deploy with GitHub Actions
 
-Pushes and pull requests run frontend checks, Deno checks and tests, and a Docker gateway smoke test. Once the destination is configured, open **Actions ? CI and production deployment ? Run workflow** on `main`. Deployment runs after CI passes. The GitHub-hosted runner connects to the Docker host over SSH with host-key verification, builds release-tagged images on the host, applies pending Supabase migrations and deploys the Edge Function, then starts and probes the gateway stack.
+The **CI** workflow runs on pushes and pull requests. It scans for committed secrets, checks frontend and backend code quality, runs the frontend and backend test suites in order, then builds the Docker stack and tests the gateway. Download the frontend and backend JUnit reports from the workflow run. CI uses disposable build fixtures and requires no production credentials.
+
+After configuring the destination, open **Actions ? CD ? Run workflow** on `main`. CD runs CI against the selected commit before opening the production environment. It then connects to the Docker host over SSH with host-key verification, builds the release images, deploys Supabase migrations and the Edge Function, and rolls out the frontend and gateway. Store production credentials in GitHub environment secrets or Supabase runtime secrets as appropriate.
 
 Configure the repository's `production` environment with these values.
 
