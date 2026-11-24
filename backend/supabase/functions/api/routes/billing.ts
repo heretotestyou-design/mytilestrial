@@ -5,6 +5,7 @@ import { loadAccount } from "./account.ts";
 import { admin, isTestPaymentUser, requireUser, type AuthUser } from "../../_shared/supabase.ts";
 import { ApiError, Errors, fromDbError, json, readJson } from "../../_shared/http.ts";
 import { checkoutSchema, confirmPaymentSchema, pagination, parse, uuid } from "../../_shared/validation.ts";
+import { paymentReceiptHtml } from "../../_shared/payment-receipt.ts";
 import { getPaymentProvider, isTestProvider, isValidWebhookSignature } from "../../_shared/payments.ts";
 import { syncNewCheckout } from "../../_shared/checkout-sheet.ts";
 import { settleGuestWebhook } from "./guest-checkout.ts";
@@ -153,6 +154,29 @@ export function billingRoutes(r: Router) {
   r.get("/v1/billing/payments/:id", async ({ req, params }) => {
     const user = await requireUser(req);
     return json(req, { payment: await getOwnPayment(user.id, params.id) });
+  });
+
+  r.get("/v1/billing/payments/:id/receipt", async ({ req, params }) => {
+    const user = await requireUser(req);
+    parse(uuid, params.id);
+    const { data: payment, error } = await admin.from("payments")
+      .select(`${PAYMENT_COLUMNS}, provider_payment_id`)
+      .eq("id", params.id)
+      .eq("user_id", user.id)
+      .eq("status", "paid")
+      .maybeSingle();
+    if (error) throw fromDbError(error);
+    if (!payment?.paid_at) throw Errors.notFound("Receipt");
+
+    const { data: contact, error: contactError } = await admin.from("checkout_contacts")
+      .select("full_name, company, email, gstin")
+      .eq("payment_id", payment.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (contactError) throw fromDbError(contactError);
+
+    const test = payment.provider !== "razorpay" || Deno.env.get("RAZORPAY_KEY_ID")?.startsWith("rzp_test_");
+    return json(req, { html: paymentReceiptHtml(payment, contact, test ? "test" : "paid") });
   });
 
   // Step 2: verify with the provider, then credit the wallet (idempotent).

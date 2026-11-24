@@ -113,6 +113,8 @@ export const api = {
       method: "POST", auth: false, body: { access, evidence },
     }),
   payment: (id: string) => request<{ payment: Payment }>(`/v1/billing/payments/${encodeURIComponent(id)}`),
+  paymentReceipt: (id: string) =>
+    request<{ html: string }>(`/v1/billing/payments/${encodeURIComponent(id)}/receipt`),
   confirmPayment: (id: string, body: { provider_payment_id?: string; provider_order_id?: string; signature?: string } = {}) =>
     request<{ payment: Payment }>(`/v1/billing/payments/${id}/confirm`, { method: "POST", body }),
   cancelPayment: (id: string) =>
