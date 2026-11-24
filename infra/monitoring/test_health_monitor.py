@@ -98,6 +98,24 @@ class HealthMonitorTests(unittest.TestCase):
             self.assertIn("FAIL API", out.read_text(encoding="utf-8"))
         send.assert_not_called()
 
+    @patch.dict(os.environ, {
+        "MONITOR_SITE_URL": "https://site.example.test",
+        "MONITOR_API_URL": "https://api.example.test",
+        "MONITOR_GMAIL_ADDRESS": "sender@example.test",
+        "MONITOR_GMAIL_APP_PASSWORD": "test-fixture",
+        "MONITOR_GMAIL_RECIPIENT": "daily@example.test",
+        "MONITOR_GMAIL_TEST_RECIPIENT": "test@example.test",
+    }, clear=True)
+    @patch("health_monitor.run_probe", return_value=Result("API", True, "HTTP 200"))
+    @patch("health_monitor.send_gmail")
+    def test_manual_email_only_targets_the_test_recipient(self, send, _run):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "report.md"
+            with patch("sys.argv", ["health_monitor.py", "--test-email", "--output", str(out)]), patch("sys.stdout", StringIO()):
+                self.assertEqual(main(), 0)
+        self.assertEqual(send.call_args.args[3], "test@example.test")
+        self.assertEqual(send.call_args.kwargs["subject"], "[Test] MyTilesTrial health report")
+
 
 if __name__ == "__main__":
     unittest.main()

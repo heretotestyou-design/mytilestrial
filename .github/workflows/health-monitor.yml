@@ -5,6 +5,11 @@ on:
     - cron: '17 * * * *'
     - cron: '37 3 * * *'
   workflow_dispatch:
+    inputs:
+      send_test_email:
+        description: Send a test report to the configured test recipient
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,10 +30,18 @@ jobs:
         if: github.event.schedule == '17 * * * *'
         run: python3 infra/monitoring/health_monitor.py
       - name: Preview the daily report
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && !inputs.send_test_email
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 infra/monitoring/health_monitor.py --daily
+      - name: Send a test health report
+        if: github.event_name == 'workflow_dispatch' && inputs.send_test_email
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MONITOR_GMAIL_ADDRESS: ${{ secrets.MONITOR_GMAIL_ADDRESS }}
+          MONITOR_GMAIL_APP_PASSWORD: ${{ secrets.MONITOR_GMAIL_APP_PASSWORD }}
+          MONITOR_GMAIL_TEST_RECIPIENT: ${{ secrets.MONITOR_GMAIL_TEST_RECIPIENT }}
+        run: python3 infra/monitoring/health_monitor.py --daily --test-email
       - name: Generate and deliver the daily report
         if: github.event.schedule == '37 3 * * *'
         env:

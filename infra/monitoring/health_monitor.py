@@ -139,11 +139,11 @@ def make_report(results, now, history=None):
     return "\n".join(lines) + "\n"
 
 
-def send_gmail(report, sender, password, recipient):
+def send_gmail(report, sender, password, recipient, subject="MyTilesTrial daily health report"):
     message = EmailMessage()
     message["From"] = sender
     message["To"] = recipient
-    message["Subject"] = "MyTilesTrial daily health report"
+    message["Subject"] = subject
     message.set_content(report)
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=TIMEOUT_SECONDS, context=ssl.create_default_context()) as smtp:
         smtp.login(sender, password)
@@ -154,6 +154,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--daily", action="store_true")
     parser.add_argument("--send", action="store_true")
+    parser.add_argument("--test-email", action="store_true")
     parser.add_argument("--output", type=Path, default=Path("health-report.md"))
     args = parser.parse_args()
     site = os.environ.get("MONITOR_SITE_URL", "").rstrip("/")
@@ -168,16 +169,22 @@ def main():
     args.output.write_text(report, encoding="utf-8")
     print(report, end="")
 
-    if args.send:
-        credentials = [os.environ.get(key) for key in ("MONITOR_GMAIL_ADDRESS", "MONITOR_GMAIL_APP_PASSWORD", "MONITOR_GMAIL_RECIPIENT")]
+    if args.send or args.test_email:
+        recipient_key = "MONITOR_GMAIL_TEST_RECIPIENT" if args.test_email else "MONITOR_GMAIL_RECIPIENT"
+        keys = ("MONITOR_GMAIL_ADDRESS", "MONITOR_GMAIL_APP_PASSWORD", recipient_key)
+        credentials = [os.environ.get(key) for key in keys]
         if all(credentials):
             try:
-                send_gmail(report, *credentials)
+                if args.test_email:
+                    send_gmail(report, *credentials, subject="[Test] MyTilesTrial health report")
+                else:
+                    send_gmail(report, *credentials)
             except (OSError, smtplib.SMTPException, ValueError) as error:
                 print(f"Report delivery failed ({type(error).__name__}).")
                 return 1
-        elif any(credentials):
-            print("Report delivery requires all three Gmail secrets.")
+        elif args.test_email or any(credentials):
+            missing = ", ".join(key for key, value in zip(keys, credentials) if not value)
+            print(f"Report delivery requires these GitHub secrets: {missing}.")
             return 1
         else:
             print("No Gmail delivery configured. The report is available in GitHub Actions.")
