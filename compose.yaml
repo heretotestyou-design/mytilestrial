@@ -1,0 +1,41 @@
+name: mytilestrial
+
+services:
+  frontend:
+    image: ${FRONTEND_IMAGE:-mytilestrial-frontend:local}
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: https://${SUPABASE_API_HOST:?Set the Supabase hostname}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?Set the public Supabase key}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:8080}
+        NEXT_PUBLIC_SUPPORT_WHATSAPP: ${NEXT_PUBLIC_SUPPORT_WHATSAPP:-}
+    restart: unless-stopped
+    deploy:
+      replicas: ${FRONTEND_REPLICAS:-2}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+      start_period: 15s
+
+  gateway:
+    image: ${GATEWAY_IMAGE:-mytilestrial-gateway:local}
+    build: ./infra/gateway
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_healthy
+    environment:
+      SUPABASE_API_HOST: ${SUPABASE_API_HOST:?Set the Supabase hostname}
+      API_GATEWAY_SHARED_SECRET: ${API_GATEWAY_SHARED_SECRET:-}
+      GATEWAY_PUBLIC_SCHEME: ${GATEWAY_PUBLIC_SCHEME:-http}
+      GATEWAY_TRUSTED_PROXY_CIDR: ${GATEWAY_TRUSTED_PROXY_CIDR:-127.0.0.1/32}
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/gateway-healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 4

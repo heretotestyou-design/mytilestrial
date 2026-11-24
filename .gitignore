@@ -1,0 +1,16 @@
+**/node_modules/
+**/.next/
+**/.next-*/
+**/.vercel/
+**/.temp/
+**/.supabase/
+**/coverage/
+**/out/
+**/.env
+**/.env.*
+!**/.env.example
+*.tsbuildinfo
+.DS_Store
+/frontend-before-*/
+/recovered-*/
+/supabase/

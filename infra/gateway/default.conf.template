@@ -1,0 +1,106 @@
+map_hash_bucket_size 64;
+
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+upstream frontend_pool {
+    zone frontend_pool 64k;
+    least_conn;
+    # Docker DNS returns every replica of the frontend service.
+    server frontend:3000 resolve max_fails=1 fail_timeout=5s;
+    keepalive 32;
+}
+
+proxy_cache_path /var/cache/nginx/mytiles levels=1:2 keys_zone=public_cache:16m
+                 max_size=256m inactive=1h use_temp_path=off;
+
+map $incoming_path $api_client {
+    /api/v1/billing/webhooks/razorpay "";
+    default $binary_remote_addr;
+}
+
+map "$request_method:$incoming_path" $paid_client {
+    ~^POST:/api/v1/generations(?:/|$) $binary_remote_addr;
+    ~^POST:/api/v1/billing/(?:checkout|guest-checkout)(?:/|$) $binary_remote_addr;
+    default "";
+}
+
+map "$http_authorization$http_cookie" $private_request {
+    "" 0;
+    default 1;
+}
+
+limit_req_zone $api_client zone=api_rate:10m rate=20r/s;
+limit_req_zone $paid_client zone=paid_rate:10m rate=10r/m;
+log_format gateway_access '$remote_addr $request_method $incoming_path $status '
+                          'upstream=$upstream_addr cache=$upstream_cache_status '
+                          'seconds=$request_time';
+
+server {
+    listen 8080;
+    server_tokens off;
+    set_real_ip_from ${GATEWAY_TRUSTED_PROXY_CIDR};
+    real_ip_header X-Forwarded-For;
+    real_ip_recursive on;
+
+    # Capture the normalized client path before rewriting it for Supabase.
+    set $incoming_path $uri;
+    set $public_scheme "${GATEWAY_PUBLIC_SCHEME}";
+    set $supabase_host "${SUPABASE_API_HOST}";
+    set $gateway_secret "${API_GATEWAY_SHARED_SECRET}";
+
+    # Avoid logging query strings, which may contain activation or checkout tokens.
+    access_log /dev/stdout gateway_access;
+    client_max_body_size 22m;
+
+    location = /gateway-healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    error_page 429 = @rate_limited;
+    location @rate_limited {
+        default_type application/json;
+        add_header Retry-After 6 always;
+        add_header Cache-Control "no-store" always;
+        return 429 '{"error":{"code":"RATE_LIMITED","message":"Too many requests. Try again shortly."}}';
+    }
+    limit_req_status 429;
+    limit_req_log_level warn;
+
+    location ~ ^/api/v1/(catalog|templates)$ {
+        limit_req zone=api_rate burst=40 nodelay;
+        proxy_cache public_cache;
+        proxy_cache_key "$host|$request_uri|$http_origin";
+        proxy_cache_valid 200 60s;
+        proxy_cache_lock on;
+        proxy_cache_bypass $private_request;
+        proxy_no_cache $private_request;
+        add_header X-Cache-Status $upstream_cache_status always;
+        include /etc/nginx/api-proxy.conf;
+    }
+
+    location /api/v1/ {
+        limit_req zone=api_rate burst=40 nodelay;
+        limit_req zone=paid_rate burst=4 nodelay;
+        proxy_buffering off;
+        include /etc/nginx/api-proxy.conf;
+    }
+
+    location /api/ {
+        return 404;
+    }
+
+    location ^~ /_next/static/ {
+        proxy_cache public_cache;
+        proxy_cache_key "$host|$request_uri";
+        proxy_cache_valid 200 1h;
+        proxy_cache_lock on;
+        include /etc/nginx/frontend-proxy.conf;
+    }
+
+    location / {
+        proxy_buffering off;
+        include /etc/nginx/frontend-proxy.conf;
+    }
+}

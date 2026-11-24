@@ -1,0 +1,11 @@
+# Vercel builds from source: upload only what the build needs.
+node_modules
+.next
+.next-build
+next
+next.zip
+out
+.env
+.env*.local
+*.tsbuildinfo
+.DS_Store
