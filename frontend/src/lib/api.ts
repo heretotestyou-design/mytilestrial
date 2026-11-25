@@ -16,6 +16,7 @@ import type {
   CreditPack,
   CreditTransaction,
   FloorLayout,
+  FloorPreviewLayout,
   Generation,
   Page,
   Payment,
@@ -155,6 +156,17 @@ export const api = {
       throw error;
     });
   },
+  floorPreview: (layout: FloorPreviewLayout, idempotencyKey: string) =>
+    request<{ generation: Generation; balance: number; image: string | null }>("/v1/generations/floor-preview", {
+      method: "POST",
+      body: layout,
+      headers: { "Idempotency-Key": idempotencyKey },
+    }).catch((error: unknown) => {
+      if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
+        throw new ApiError(error.status, "FLOOR_PREVIEW_UNAVAILABLE", "This API needs an update before it can generate floor previews.");
+      }
+      throw error;
+    }),
   claimFreePlan: () => request<Account>("/v1/billing/free-plan", { method: "POST", body: {} }),
   generations: (p: { limit?: number; before?: string | null } = {}) =>
     request<Page<Generation>>(`/v1/generations${qs(p)}`),

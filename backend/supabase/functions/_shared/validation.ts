@@ -1,6 +1,6 @@
 // Request validation with zod.
 import { z } from "npm:zod@3.23.8";
-import { floorGrid } from "./floor-layout.ts";
+import { DEFAULT_FLOOR_TILE_FINISH, FLOOR_TILE_FINISHES, floorGrid, type FloorLayout } from "./floor-layout.ts";
 import { Errors } from "./http.ts";
 import { SPACE_IDS } from "./render-spaces.ts";
 
@@ -76,15 +76,20 @@ export const generationSchema = z
   .strict();
 
 const positiveDimension = z.number().finite().positive();
-const floorLayoutSchema = z.object({
+const floorLayoutFields = z.object({
   floorWidthFeet: positiveDimension,
   floorLengthFeet: positiveDimension,
   tileLongSideInches: positiveDimension,
   tileShortSideInches: positiveDimension,
   direction: z.enum(["horizontal", "vertical"]),
-}).strict().refine((layout) => layout.tileLongSideInches >= layout.tileShortSideInches && floorGrid(layout) !== null, {
-  message: "Enter valid floor and tile dimensions.",
-});
+}).strict();
+const validFloorLayout = (layout: FloorLayout) =>
+  layout.tileLongSideInches >= layout.tileShortSideInches && floorGrid(layout) !== null;
+const floorLayoutError = { message: "Enter valid floor and tile dimensions." };
+export const floorLayoutSchema = floorLayoutFields.refine(validFloorLayout, floorLayoutError);
+export const floorPreviewSchema = floorLayoutFields.extend({
+  tileFinish: z.enum(FLOOR_TILE_FINISHES).default(DEFAULT_FLOOR_TILE_FINISH),
+}).refine(validFloorLayout, floorLayoutError);
 
 const floorLayoutField = z.string().max(300).transform((value, context): unknown => {
   try {

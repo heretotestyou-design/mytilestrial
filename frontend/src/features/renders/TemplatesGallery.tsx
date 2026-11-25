@@ -8,6 +8,7 @@ import { Icon } from "@/components/ui/Icon";
 import { RENDER_TEMPLATES, TEMPLATE_CATEGORIES, THEME_TEMPLATE_ID, WALL_SELECTION_TEMPLATE_ID } from "@/lib/catalog";
 import { cn } from "@/lib/format";
 import { EASE_OUT } from "@/lib/motion";
+import type { RenderSpace } from "@/lib/render-spaces";
 import { templatePreview } from "@/lib/samples";
 import { CATEGORY_ICON, type TemplateCategory } from "./constants";
 import { TemplatePreview } from "./TemplatePreview";
@@ -15,8 +16,10 @@ import { TemplatePreview } from "./TemplatePreview";
 type Filter = "All" | TemplateCategory;
 const FILTERS: Filter[] = ["All", ...TEMPLATE_CATEGORIES];
 
+type Props = { space: RenderSpace; selectedId: string; onUse: (id: string) => void };
+
 /** Browse every layout by category; "Use template" opens it in the studio. */
-export function TemplatesGallery({ selectedId, onUse }: Readonly<{ selectedId: string; onUse: (id: string) => void }>) {
+export function TemplatesGallery({ space, selectedId, onUse }: Readonly<Props>) {
   const [filter, setFilter] = useState<Filter>("All");
   const shown = filter === "All" ? RENDER_TEMPLATES : RENDER_TEMPLATES.filter((t) => t.category === filter);
 
@@ -67,12 +70,10 @@ export function TemplatesGallery({ selectedId, onUse }: Readonly<{ selectedId: s
                     selected && "ring-2 ring-bronze",
                   )}
                 >
-                  {/* Animated diagram of what gets tiled; hovering shows a real AI result. */}
-                  <div className="relative aspect-[4/3] overflow-hidden bg-[#F7F3EE]">
-                    <TemplatePreview id={t.id} />
-                    <div className="absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100">
-                      <FallbackImage src={templatePreview(t.id)} alt={`${t.name}: example result`} icon={CATEGORY_ICON[t.category]} className="h-full w-full" />
-                      <span className="absolute left-3 top-3 rounded-full bg-ink/70 px-2.5 py-1 text-[11px] font-medium text-ivory backdrop-blur">Real example</span>
+                  <div className="relative aspect-[4/3] overflow-hidden bg-[#F7F3EE]" aria-hidden="true">
+                    <FallbackImage src={templatePreview(space.id, t.id)} alt="" icon={CATEGORY_ICON[t.category]} className="h-full w-full" />
+                    <div className="pointer-events-none absolute inset-0 bg-[#F7F3EE] opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
+                      <TemplatePreview id={t.id} />
                     </div>
                   </div>
                   <div className="p-4">

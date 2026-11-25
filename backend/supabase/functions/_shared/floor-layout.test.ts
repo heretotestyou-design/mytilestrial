@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { buildPrompt, findTemplate } from "./templates.ts";
-import { generationFormSchema } from "./validation.ts";
+import { floorPreviewPrompt } from "./floor-layout.ts";
+import { floorLayoutSchema, floorPreviewSchema, generationFormSchema } from "./validation.ts";
 
 const layout = {
   floorWidthFeet: 10,
@@ -31,4 +32,23 @@ Deno.test("floor layout metadata is optional and rejects invalid dimensions or d
     assert.equal(generationFormSchema.safeParse({ ...fields, floor_layout: JSON.stringify(invalid) }).success, false);
   }
   assert.equal(generationFormSchema.safeParse({ ...fields, floor_layout: "invalid JSON" }).success, false);
+});
+
+Deno.test("generated floor preview builds a room and its measured tile grid from scratch", () => {
+  const measures = floorLayoutSchema.parse(layout);
+  const prompt = floorPreviewPrompt(measures);
+  assert.match(prompt, /newly designed rectangular room from scratch/);
+  assert.match(prompt, /10 tile positions across and 5 tile positions from front to back/);
+  assert.match(prompt, /50 total floor tile positions/);
+  assert.doesNotMatch(prompt, /tile photo|existing camera|reference photo/i);
+  assert.equal(floorLayoutSchema.safeParse({ ...layout, image: "extra input" }).success, false);
+});
+
+Deno.test("a selected tile finish is validated and passed to the preview prompt", () => {
+  assert.equal(floorPreviewSchema.parse(layout).tileFinish, "warm-grey-concrete");
+  const selected = floorPreviewSchema.parse({ ...layout, tileFinish: "green-marble" });
+  assert.match(floorPreviewPrompt(selected, selected.tileFinish), /deep green marble-look porcelain/);
+  assert.match(floorPreviewPrompt(selected, selected.tileFinish), /50 total floor tile positions/);
+  assert.equal(floorPreviewSchema.safeParse({ ...layout, tileFinish: "custom finish" }).success, false);
+  assert.equal(floorLayoutSchema.safeParse(selected).success, false);
 });

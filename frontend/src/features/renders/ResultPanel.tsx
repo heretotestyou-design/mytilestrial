@@ -9,10 +9,10 @@ import { EASE_OUT } from "@/lib/motion";
 import { DownloadNotice } from "./DownloadNotice";
 import { useSessionRenders, type SessionRender } from "./sessionRenders";
 
-type Props = { result: SessionRender | null; error: string | null; busy: boolean; containImage?: boolean };
+type Props = { result: SessionRender | null; error: string | null; busy: boolean; containImage?: boolean; emptyHint?: string };
 
 /** The right-hand preview: empty state, live loader, finished image or failure. */
-export function ResultPanel({ result, error, busy, containImage }: Readonly<Props>) {
+export function ResultPanel({ result, error, busy, containImage, emptyHint }: Readonly<Props>) {
   const elapsed = useElapsed(busy);
   // Read the live entry so the "downloaded" state stays in sync with the gallery.
   const renders = useSessionRenders();
@@ -46,7 +46,7 @@ export function ResultPanel({ result, error, busy, containImage }: Readonly<Prop
   } else {
     view = (
       <Notice key="empty" icon="image" title="Your render appears here" pattern>
-        Choose your photos, then press Generate.
+        {emptyHint ?? "Choose your photos, then press Generate."}
       </Notice>
     );
   }

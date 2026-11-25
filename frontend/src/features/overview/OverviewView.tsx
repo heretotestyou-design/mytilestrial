@@ -91,7 +91,7 @@ export function OverviewView() {
                 {space.name} layouts
               </h2>
             </div>
-            <TemplatesGallery key={space.id} selectedId={templateId} onUse={(id) => show(id, space)} />
+            <TemplatesGallery key={space.id} space={space} selectedId={templateId} onUse={(id) => show(id, space)} />
           </section>
         ) : (
           <SpacePicker onPick={(next) => show(null, next)} />

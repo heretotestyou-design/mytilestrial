@@ -83,6 +83,27 @@ describe("API client", () => {
       expect(JSON.parse(init.body.get("floor_layout"))).toEqual(floorLayout);
     });
 
+    it("requests a generated floor preview with measurements and no uploads", async () => {
+      fetchMock.mockResolvedValue(ok(JSON.stringify({ generation: { id: "g1" }, balance: 4, image: "data:image/jpeg;base64,AAA" })));
+      const preview = { ...floorLayout, tileFinish: "green-marble" } as const;
+      await api.floorPreview(preview, "preview-key");
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe("https://test.supabase.co/functions/v1/api/v1/generations/floor-preview");
+      expect(init.headers["Content-Type"]).toBe("application/json");
+      expect(init.headers["Idempotency-Key"]).toBe("preview-key");
+      expect(JSON.parse(init.body)).toEqual(preview);
+    });
+
+    it.each([404, 405])("reports unsupported floor previews without retrying a paid route on status %i", async (status) => {
+      fetchMock.mockResolvedValue(ok(JSON.stringify({ error: { message: "Unsupported route." } }), status));
+      await expect(api.floorPreview(floorLayout, "preview-key")).rejects.toMatchObject({
+        status,
+        code: "FLOOR_PREVIEW_UNAVAILABLE",
+        message: "This API needs an update before it can generate floor previews.",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it("sends the selected wall mask and room photo to the masked render route", async () => {
       const wallMask = new File(["mask"], "wall-mask.png", { type: "image/png" });
       const room = new File(["room"], "room.png", { type: "image/png" });

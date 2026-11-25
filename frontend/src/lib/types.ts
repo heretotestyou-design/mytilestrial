@@ -1,3 +1,5 @@
+import type { FloorTileFinish } from "./samples";
+
 // Types mirroring the API responses (backend/supabase/functions/api).
 
 export type Profile = {
@@ -157,3 +159,5 @@ export type FloorLayout = {
   tileShortSideInches: number;
   direction: "horizontal" | "vertical";
 };
+
+export type FloorPreviewLayout = FloorLayout & { tileFinish?: FloorTileFinish };

@@ -23,6 +23,9 @@ it("shows spaces first and keeps the chosen space through categories, studio and
   expect(screen.queryByRole("tab", { name: /^Walls/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Kitchen" }));
   expect(screen.getByRole("heading", { name: "Kitchen layouts" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Full floor/ }).querySelector("img")).toHaveAttribute(
+    "src", "/samples/space-templates/kitchen/floor-full.webp",
+  );
   expect(replace).toHaveBeenLastCalledWith("/dashboard?space=kitchen", { scroll: false });
 
   const walls = screen.getByRole("tab", { name: /^Walls/ });
@@ -37,5 +40,8 @@ it("shows spaces first and keeps the chosen space through categories, studio and
   fireEvent.click(screen.getByRole("button", { name: "All spaces" }));
   fireEvent.click(screen.getByRole("button", { name: "Bedroom" }));
   expect(screen.getByRole("heading", { name: "Bedroom layouts" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Full floor/ }).querySelector("img")).toHaveAttribute(
+    "src", "/samples/space-templates/bedroom/floor-full.webp",
+  );
   expect(screen.getByRole("tab", { name: /^All/ })).toHaveAttribute("aria-selected", "true");
 });

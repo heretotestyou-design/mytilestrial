@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "@/components/ui/Toast";
 import { api } from "@/lib/api";
+import { findRenderSpace } from "@/lib/render-spaces";
 
 vi.mock("@/features/account/hooks", () => ({
   useAccount: () => ({ account: { profile: { id: "u1", email: "a@b.co" }, wallet: { balance: 50 } } }),
@@ -67,38 +68,10 @@ describe("Your selection", () => {
 
 });
 
-describe("Floor planner", () => {
-  it("rotates rectangular tiles, counts cuts, and sends the selected layout when generating", async () => {
-    const user = setup();
-    await user.click(screen.getByRole("button", { name: "Use Tile 4" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Use Tile 4" })).toHaveAttribute("aria-pressed", "true"));
-    fireEvent.change(screen.getByRole("spinbutton", { name: "Floor width" }), { target: { value: "10" } });
-    expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
-    fireEvent.change(screen.getByRole("spinbutton", { name: "Floor length" }), { target: { value: "9" } });
-    fireEvent.change(screen.getByRole("spinbutton", { name: "Tile short side" }), { target: { value: "12" } });
-    fireEvent.change(screen.getByRole("spinbutton", { name: "Tile long side" }), { target: { value: "24" } });
-
-    expect(screen.getByText("45 tiles")).toBeVisible();
-    await user.click(screen.getByText("View layout diagram"));
-    expect(screen.getByRole("img", { name: "horizontal tile layout, 5 columns by 9 rows" })).toBeVisible();
-
-    fireEvent.click(screen.getByRole("radio", { name: /vertical/i }));
-    expect(screen.getByText("50 tiles")).toBeVisible();
-    expect(screen.getByText(/40 full tiles and 10 positions with cuts/)).toBeVisible();
-    expect(screen.getByRole("img", { name: "vertical tile layout, 10 columns by 5 rows" })).toBeVisible();
-
-    vi.mocked(api.render).mockRejectedValueOnce(new Error("Mock render"));
-    await user.click(screen.getByRole("button", { name: "Generate" }));
-    expect(api.render).toHaveBeenCalledWith(expect.objectContaining({
-      templateId: "floor-full",
-      floorLayout: { floorWidthFeet: 10, floorLengthFeet: 9, tileLongSideInches: 24, tileShortSideInches: 12, direction: "vertical" },
-    }), expect.any(String));
-  });
-
-  it("only shows the full-floor planner in the Full floor template", () => {
-    setup("floor-border");
-    expect(screen.queryByRole("heading", { name: "Floor planner" })).not.toBeInTheDocument();
-  });
+it("keeps Full floor as a photo-based template", () => {
+  setup("floor-full");
+  expect(screen.getByRole("heading", { name: "Full floor" })).toBeInTheDocument();
+  expect(screen.queryByText("Adjust measurements")).not.toBeInTheDocument();
 });
 
 describe("Select a wall", () => {
@@ -140,4 +113,29 @@ describe("Select a wall", () => {
     expect(compose).toHaveBeenCalledWith(output);
     expect(await screen.findByRole("img", { name: "Your tile render" })).toHaveClass("object-contain");
   });
+});
+
+it("replaces the Dining room studio examples when changing spaces", async () => {
+  const studio = (id: string) => (
+    <ToastProvider>
+      <RenderStudio templateId="floor-border" space={findRenderSpace(id)} onTemplateChange={vi.fn()} onBack={vi.fn()} />
+    </ToastProvider>
+  );
+  const { rerender } = render(studio("dining-room"));
+  const user = userEvent.setup();
+
+  expect(screen.queryByRole("button", { name: "Use Room 1" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Use Tile 1" })).not.toBeInTheDocument();
+  const tile = screen.getByRole("button", { name: "Use Gold-veined marble" });
+  const room = screen.getByRole("button", { name: "Use Dining room 4" });
+  await user.click(tile);
+  await user.click(room);
+  await waitFor(() => expect(room).toHaveAttribute("aria-pressed", "true"));
+  expect(tile).toHaveAttribute("aria-pressed", "true");
+
+  rerender(studio("kitchen"));
+  expect(screen.queryByRole("button", { name: "Use Dining room 4" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Use Kitchen 1" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Use Ivory terrazzo" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Use Gold-veined marble" })).toHaveAttribute("aria-pressed", "false");
 });

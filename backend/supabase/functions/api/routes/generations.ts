@@ -7,13 +7,14 @@
 import type { Router } from "../../_shared/router.ts";
 import { ACCEPTED_IMAGE_TYPES, MAX_UPLOAD_BYTES } from "../../_shared/config.ts";
 import { isRealImage, pngInfo } from "../../_shared/images.ts";
-import { RenderError, renderImage, withSignedUrls, type WallEdit } from "../../_shared/render.ts";
+import { RenderError, renderFloorPreview, renderImage, withSignedUrls, type WallEdit } from "../../_shared/render.ts";
 import { PUBLIC_TEMPLATES, WALL_SELECTION_TEMPLATE_ID, findTemplate, isThemeTemplate } from "../../_shared/templates.ts";
 import { admin, requireInternal, requireUser } from "../../_shared/supabase.ts";
 import { ApiError, corsHeaders, Errors, fromDbError, json, readJson } from "../../_shared/http.ts";
 import {
   completeGenerationSchema,
   failGenerationSchema,
+  floorPreviewSchema,
   generationFormSchema,
   pagination,
   parse,
@@ -110,17 +111,23 @@ const GENERATION_COLUMNS =
 export function generationRoutes(r: Router) {
   r.get("/v1/templates", ({ req }) => json(req, { templates: PUBLIC_TEMPLATES }, 200, "public, max-age=0, s-maxage=300"));
 
-  const createRender = async (req: Request, mode: RenderMode = "regular") => {
+  type PreparedRender = {
+    type: string;
+    name: string;
+    input: Record<string, unknown>;
+    render: () => ReturnType<typeof renderImage>;
+  };
+
+  const createRender = async (req: Request, prepare: () => Promise<PreparedRender>) => {
     const user = await requireUser(req);
-    const { type, template, space, tile_in_room, floor_layout, images, wallEdit } = await readRenderRequest(req, mode);
-    if (mode === "floor" && !floor_layout) throw Errors.badRequest("Complete the floor and tile measurements.");
+    const { type, name, input, render } = await prepare();
 
     const idempotencyKey = req.headers.get("idempotency-key")?.slice(0, 100) || null;
     const { data, error } = await admin.rpc("start_generation", {
       p_user_id: user.id,
       p_type: type,
-      p_room_type: template.name,
-      p_input: { template_id: template.id, tile_in_room, photos: images.length, ...(space && { space }), ...(floor_layout && { floor_layout }) },
+      p_room_type: name,
+      p_input: input,
       p_idempotency_key: idempotencyKey,
     });
     if (error) throw fromDbError(error);
@@ -148,7 +155,7 @@ export function generationRoutes(r: Router) {
         const ping = setInterval(() => send(" "), KEEPALIVE_MS);
         try {
           await admin.rpc("start_processing_generation", { p_generation_id: id });
-          const { b64, mime } = await renderImage({ template, type, tileInRoom: tile_in_room, floorLayout: floor_layout, space, wallEdit, images });
+          const { b64, mime } = await render();
           const delivered = send(JSON.stringify({ generation: { ...data.generation, status: "completed" }, balance: data.balance, image: `data:${mime};base64,${b64}` }));
           if (delivered) {
             await admin.rpc("complete_generation", { p_generation_id: id, p_output_url: null });
@@ -182,9 +189,31 @@ export function generationRoutes(r: Router) {
       headers: { ...corsHeaders(req), "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
     });
   };
-  r.post("/v1/generations", ({ req }) => createRender(req));
-  r.post("/v1/generations/floor-layout", ({ req }) => createRender(req, "floor"));
-  r.post("/v1/generations/selected-wall", ({ req }) => createRender(req, "wall"));
+  const photoRender = (req: Request, mode: RenderMode = "regular") => createRender(req, async () => {
+    const { type, template, space, tile_in_room, floor_layout, images, wallEdit } = await readRenderRequest(req, mode);
+    if (mode === "floor" && !floor_layout) throw Errors.badRequest("Complete the floor and tile measurements.");
+
+    return {
+      type,
+      name: template.name,
+      input: { template_id: template.id, tile_in_room, photos: images.length, ...(space && { space }), ...(floor_layout && { floor_layout }) },
+      render: () => renderImage({ template, type, tileInRoom: tile_in_room, floorLayout: floor_layout, space, wallEdit, images }),
+    };
+  });
+
+  r.post("/v1/generations", ({ req }) => photoRender(req));
+  r.post("/v1/generations/floor-layout", ({ req }) => photoRender(req, "floor"));
+  r.post("/v1/generations/selected-wall", ({ req }) => photoRender(req, "wall"));
+  r.post("/v1/generations/floor-preview", ({ req }) => createRender(req, async () => {
+    if (Number(req.headers.get("content-length")) > 4096) throw new ApiError(413, "PAYLOAD_TOO_LARGE", "The floor layout is too large.");
+    const { tileFinish, ...layout } = parse(floorPreviewSchema, await readJson(req));
+    return {
+      type: "standard",
+      name: "Floor planner",
+      input: { photos: 0, floor_layout: layout, tile_finish: tileFinish },
+      render: () => renderFloorPreview(layout, tileFinish),
+    };
+  }));
 
   r.get("/v1/generations", async ({ req, url }) => {
     const user = await requireUser(req);

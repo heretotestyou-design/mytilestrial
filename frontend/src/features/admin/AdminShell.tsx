@@ -15,6 +15,7 @@ const links: { href: string; label: string; icon: IconName }[] = [
   { href: "/admin", label: "Overview", icon: "grid" },
   { href: "/admin/users", label: "Users", icon: "user" },
   { href: "/admin/checkouts", label: "Checkouts", icon: "receipt" },
+  { href: "/admin/monitor", label: "Health monitor", icon: "sparkle" },
 ];
 
 async function signOut() {

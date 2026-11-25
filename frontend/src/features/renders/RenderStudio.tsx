@@ -12,9 +12,8 @@ import { useAccount } from "@/features/account/hooks";
 import { GENERATION_COSTS, RENDER_TEMPLATES, THEME_TEMPLATE_ID, WALL_SELECTION_TEMPLATE_ID } from "@/lib/catalog";
 import { cn } from "@/lib/format";
 import { useObjectUrl } from "@/lib/hooks";
-import { spaceRoomSamples, type RenderSpace } from "@/lib/render-spaces";
-import { sampleImages } from "@/lib/samples";
-import { FloorPlanner, useFloorPlanner } from "./FloorPlanner";
+import type { RenderSpace } from "@/lib/render-spaces";
+import { studioSamples } from "@/lib/samples";
 import { useLeaveWarning, useRememberedState, useRenderJob } from "./hooks";
 import { PhotoChooser } from "./PhotoChooser";
 import { ResultPanel } from "./ResultPanel";
@@ -32,17 +31,13 @@ type Props = { templateId: string; space?: RenderSpace; onTemplateChange: (id: s
 export function RenderStudio({ templateId, space, onTemplateChange, onBack }: Readonly<Props>) {
   const { account } = useAccount();
   const toast = useToast();
-  const { busy, result, error, start } = useRenderJob();
+  const { busy, rendering, result, error, start } = useRenderJob();
   useLeaveWarning();
 
   const template = RENDER_TEMPLATES.find((t) => t.id === templateId) ?? RENDER_TEMPLATES[1];
   const category = template.category;
   const theme = template.id === THEME_TEMPLATE_ID;
-  const fullFloor = template.id === "floor-full";
   const selectedWallTemplate = template.id === WALL_SELECTION_TEMPLATE_ID;
-  const floorPlanner = useFloorPlanner();
-  const floorLayout = fullFloor ? floorPlanner.plan?.layout : undefined;
-  const incompleteFloor = fullFloor && floorPlanner.incomplete;
   const siblings = RENDER_TEMPLATES.filter((t) => t.category === category);
 
   // Photo 1 = tile (or site photo); photo 2 = room (or theme reference).
@@ -62,16 +57,14 @@ export function RenderStudio({ templateId, space, onTemplateChange, onBack }: Re
   const [previousSpace, setPreviousSpace] = useRememberedState<RenderSpace["id"] | undefined>("studio.space", space?.id);
   if (space && previousSpace !== space.id) {
     setPreviousSpace(space.id);
-    if (!theme) {
-      setPhoto2(EMPTY);
-      setWall(null);
-    }
+    if (photo1.example) setPhoto1(EMPTY);
+    if (!theme || photo2.example) setPhoto2(EMPTY);
+    setWall(null);
   }
 
-  const roomSamples = sampleImages(category, "room");
   const wallCorners = selectedWallTemplate && wall?.room === photo2.file ? wall.corners : undefined;
   const photosReady = Boolean(photo1.file && (!(theme || selectedWallTemplate) || photo2.file));
-  const ready = photosReady && !incompleteFloor && (!selectedWallTemplate || Boolean(wallCorners));
+  const ready = photosReady && (!selectedWallTemplate || Boolean(wallCorners));
   const balance = account?.wallet.balance ?? 0;
   const missing = account ? Math.max(0, COST - balance) : 0;
   const onError = (m: string) => toast(m, "error");
@@ -100,7 +93,6 @@ export function RenderStudio({ templateId, space, onTemplateChange, onBack }: Re
       templateName: template.name,
       space: space?.id,
       tileInRoom: theme ? undefined : tileInRoom,
-      ...(floorLayout && { floorLayout }),
       ...(wallCorners && { wallCorners }),
     });
   }
@@ -123,7 +115,6 @@ export function RenderStudio({ templateId, space, onTemplateChange, onBack }: Re
 
   let hint: React.ReactNode;
   if (missing > 0) hint = <span className="text-red-600">You need {missing} more image{missing === 1 ? "" : "s"}.</span>;
-  else if (incompleteFloor) hint = "Complete the floor and tile measurements to render this layout.";
   else if (!photosReady && selectedWallTemplate) hint = "Choose a tile and a room photo.";
   else if (!photosReady) hint = theme ? "Choose a site photo and a theme reference." : "Choose a tile to start.";
   else if (selectedWallTemplate && !wallCorners) hint = "Highlight the wall you want to tile.";
@@ -178,31 +169,28 @@ export function RenderStudio({ templateId, space, onTemplateChange, onBack }: Re
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         {/* Photos: one card per photo */}
         <div className="space-y-5">
-          {fullFloor && (
-            <FloorPlanner className={CARD} tilePhoto={tileInRoom ? null : photo1.file} planner={floorPlanner} />
-          )}
           {theme ? (
             <>
               <div data-tour="tile" data-slot="photo1" className={CARD}>
-                <PhotoChooser step={1} title="Site photo" hint="The unfinished space to transform." shape="wide" samples={sampleImages(category, "site")}
+                <PhotoChooser step={1} title="Site photo" hint="The space you want to transform." shape="wide" samples={studioSamples(category, "site", space)}
                   file={photo1.file} selected={photo1.example} disabled={busy} onChange={(file, example) => setPhoto1({ file, example })} onError={onError} />
               </div>
               <div data-tour="room" data-slot="photo2" className={CARD}>
-                <PhotoChooser step={2} title="Theme reference" hint="A finished look to copy." shape="wide" samples={sampleImages(category, "reference")}
+                <PhotoChooser step={2} title="Theme reference" hint="A finished look to copy." shape="wide" samples={studioSamples(category, "reference", space)}
                   file={photo2.file} selected={photo2.example} disabled={busy} onChange={(file, example) => setPhoto2({ file, example })} onError={onError} />
               </div>
             </>
           ) : (
             <>
               <div data-tour="tile" data-slot="photo1" className={CARD}>
-                <PhotoChooser step={1} title="Tile" hint="Straight-on and evenly lit works best." shape="square" samples={sampleImages(category, "tile")}
+                <PhotoChooser step={1} title="Tile" hint="Straight-on and evenly lit works best." shape="square" samples={studioSamples(category, "tile", space)}
                   file={photo1.file} selected={photo1.example} disabled={busy} onChange={(file, example) => setPhoto1({ file, example })} onError={onError} />
               </div>
               <div data-tour="room" data-slot="photo2" className={CARD}>
                 <PhotoChooser step={2} title="Room" optional={!selectedWallTemplate}
                   hint={selectedWallTemplate ? "Choose a photo where the wall edges are visible."
                     : space ? "Skip the photo to generate a scene for this space." : "Skip it and we'll use a clean modern room."}
-                  shape="wide" samples={space ? spaceRoomSamples(space, roomSamples, category) : roomSamples} file={photo2.file} selected={photo2.example} disabled={busy}
+                  shape="wide" samples={studioSamples(category, "room", space)} file={photo2.file} selected={photo2.example} disabled={busy}
                   onChange={(file, example) => {
                     setPhoto2({ file, example });
                     setWall(null);
@@ -226,7 +214,7 @@ export function RenderStudio({ templateId, space, onTemplateChange, onBack }: Re
 
         {/* Output */}
         <div ref={output} className="glass scroll-mt-16 rounded-[18px] p-4 sm:p-5 lg:sticky lg:top-6">
-          <ResultPanel result={result} error={error} busy={busy} containImage={selectedWallTemplate} />
+          <ResultPanel result={result} error={error} busy={rendering} containImage={selectedWallTemplate} />
 
           <div data-tour="generate">
             <div className="mt-4 border-t border-ink/[0.06] pt-4">
@@ -235,14 +223,6 @@ export function RenderStudio({ templateId, space, onTemplateChange, onBack }: Re
                 <Chosen label={labels[0]} file={photo1.file} square={!theme} onClick={() => reveal("photo1")} />
                 <Chosen label={labels[1]} file={photo2.file} optional={!theme && !selectedWallTemplate} onClick={() => reveal("photo2")} />
               </div>
-              {floorLayout && (
-                <p className="mt-3 text-[13px] text-stone-600">
-                  <b className="font-medium text-ink">Layout for next render</b>{" "}
-                  {floorLayout.floorWidthFeet} × {floorLayout.floorLengthFeet} ft floor ·{" "}
-                  {floorLayout.tileLongSideInches} × {floorLayout.tileShortSideInches} in tile ·{" "}
-                  <span className="capitalize">{floorLayout.direction}</span>
-                </p>
-              )}
             </div>
             <div ref={actions} className="mt-4 flex flex-wrap items-center gap-4">
               <p className="order-last w-full text-[13px] text-stone-600 sm:order-none sm:w-auto sm:min-w-0 sm:flex-1">{hint}</p>

@@ -4,7 +4,7 @@
 // Same call as trino-ai's worker; env: OPENAI_API_KEY, OPENAI_IMAGE_MODEL, OPENAI_IMAGE_QUALITY.
 import { admin } from "./supabase.ts";
 import type { SpaceId } from "./render-spaces.ts";
-import type { FloorLayout } from "./floor-layout.ts";
+import { floorPreviewPrompt, type FloorLayout, type FloorTileFinish } from "./floor-layout.ts";
 import { buildPrompt, isThemeTemplate, type Template } from "./templates.ts";
 
 // Kept for renders created before images stopped being stored.
@@ -47,6 +47,10 @@ export async function renderImage({ template, type, tileInRoom, floorLayout, spa
   return await callOpenAI(buildPrompt(template, tileInRoom, floorLayout, images.length === 1 ? space : undefined), editImages, tier, keepAspect, wallEdit);
 }
 
+export function renderFloorPreview(layout: FloorLayout, finish: FloorTileFinish) {
+  return callOpenAI(floorPreviewPrompt(layout, finish), [], TIERS.standard, false);
+}
+
 async function callOpenAI(prompt: string, images: Blob[], tier: Tier, keepAspect: boolean, wallEdit?: WallEdit) {
   const key = Deno.env.get("OPENAI_API_KEY");
   if (!key) {
@@ -56,27 +60,35 @@ async function callOpenAI(prompt: string, images: Blob[], tier: Tier, keepAspect
 
   // Optional settings. Newer models may not accept all of them, so any that OpenAI
   // rejects as unsupported is dropped and the request retried, instead of failing.
-  const optional: Record<string, string> = {
+  const optional: Record<string, string | number> = {
     size: wallEdit?.size ?? (keepAspect ? "auto" : "1536x1024"),
     quality: tier.quality,
     output_format: "jpeg",
-    output_compression: "90",
-    ...(tier.inputFidelity ? { input_fidelity: tier.inputFidelity } : {}),
+    output_compression: 90,
+    ...(images.length && tier.inputFidelity ? { input_fidelity: tier.inputFidelity } : {}),
   };
 
   let res: Response;
   // deno-lint-ignore no-explicit-any
   let payload: any;
   for (let attempt = 0; ; attempt++) {
-    const form = new FormData();
-    form.append("model", tier.model);
-    form.append("prompt", prompt);
-    for (const [k, v] of Object.entries(optional)) form.append(k, v);
-    images.forEach((img, i) => form.append("image[]", img, `image-${i + 1}.${img.type.split("/")[1] ?? "png"}`));
-    if (wallEdit) form.append("mask", wallEdit.mask, "wall-mask.png");
+    const settings = { model: tier.model, prompt, ...optional };
+    const headers: Record<string, string> = { Authorization: `Bearer ${key}` };
+    let body: BodyInit;
+    if (images.length) {
+      const form = new FormData();
+      for (const [name, value] of Object.entries(settings)) form.append(name, String(value));
+      images.forEach((img, i) => form.append("image[]", img, `image-${i + 1}.${img.type.split("/")[1] ?? "png"}`));
+      if (wallEdit) form.append("mask", wallEdit.mask, "wall-mask.png");
+      body = form;
+    } else {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(settings);
+    }
 
+    const endpoint = images.length ? "edits" : "generations";
     try {
-      res = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form });
+      res = await fetch(`https://api.openai.com/v1/images/${endpoint}`, { method: "POST", headers, body });
     } catch (e) {
       console.error("Image engine unreachable", e);
       throw new RenderError("The render engine couldn't be reached. Please try again.");
@@ -97,7 +109,7 @@ async function callOpenAI(prompt: string, images: Blob[], tier: Tier, keepAspect
   if (!res.ok) {
     console.error("Image engine error", res.status, tier.model, payload?.error?.message ?? "");
     if (payload?.error?.code === "moderation_blocked") {
-      throw new RenderError("The image was rejected by the safety filter. Try a different photo.");
+      throw new RenderError(images.length ? "The image was rejected by the safety filter. Try a different photo." : "The preview was rejected by the safety filter.");
     }
     throw new RenderError("The render engine couldn't complete this render.");
   }

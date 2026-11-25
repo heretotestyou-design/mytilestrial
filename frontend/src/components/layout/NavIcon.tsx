@@ -4,7 +4,7 @@
 // (the parent sets the "hover" variant) and once when it becomes the current page.
 import { motion, useReducedMotion, type Transition, type Variants } from "framer-motion";
 
-export type NavIconName = "overview" | "renders" | "billing" | "settings";
+export type NavIconName = "overview" | "floor-planner" | "renders" | "billing" | "settings";
 
 const spring: Transition = { type: "spring", stiffness: 380, damping: 16 };
 const draw: Transition = { duration: 0.45, ease: [0.22, 1, 0.36, 1] };
@@ -47,6 +47,13 @@ export function NavIcon({ name, className }: Readonly<{ name: NavIconName; class
           <motion.path d="M3.5 11.5 12 4l8.5 7.5" variants={v(pose({ y: -1.6 }))} />
           <path d="M5.5 10v10h13V10" />
           <motion.path d="M10 20v-5h4v5" variants={v({ rest: { pathLength: 1, opacity: 1 }, hover: { pathLength: [0, 1], transition: draw }, active: { pathLength: [0, 1], transition: draw } })} />
+        </motion.svg>
+      );
+    case "floor-planner":
+      return (
+        <motion.svg {...svgProps} className={className}>
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <motion.path d="M12 4v16M4 12h16" variants={v({ rest: { pathLength: 1 }, hover: { pathLength: [0, 1], transition: draw }, active: { pathLength: [0, 1], transition: draw } })} />
         </motion.svg>
       );
     case "renders":
