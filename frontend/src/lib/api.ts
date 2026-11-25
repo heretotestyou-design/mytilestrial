@@ -105,7 +105,7 @@ export const api = {
   checkoutContact: (mode?: "website") => request<CheckoutContact>(`/v1/billing/checkout-contact${qs({ mode })}`),
   checkout: (pack_id: string, options?: { expected_amount_paise: number; details?: CheckoutDetails }) =>
     request<Checkout>("/v1/billing/checkout", { method: "POST", body: { pack_id, ...options } }),
-  guestCheckout: (details: { pack_id: string; expected_amount_paise: number; full_name: string; company: string; email: string; phone: string }) =>
+  guestCheckout: (details: { pack_id: string; expected_amount_paise: number; full_name: string; company: string; email: string; phone: string; gstin?: string }) =>
     request<{ id: string; access: string; key_id: string; order_id: string; amount: number; currency: string; name: string }>(
       "/v1/billing/guest-checkout", { method: "POST", auth: false, body: details },
     ),

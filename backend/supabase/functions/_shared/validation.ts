@@ -41,6 +41,8 @@ export const spendLimitSchema = z
   })
   .strict();
 
+export const gstinSchema = z.string().trim().toUpperCase().regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/, "Enter a valid GSTIN");
+
 const checkoutDetails = z.object({
   full_name: z.string().trim().min(1).max(120),
   phone: z.string().trim().max(20).regex(/^\+?[0-9 ()-]{7,20}$/).refine((value) => {
@@ -48,7 +50,7 @@ const checkoutDetails = z.object({
     return digits >= 7 && digits <= 15;
   }, "Enter a valid contact number"),
   company: z.string().trim().max(120).optional(),
-  gstin: z.string().trim().toUpperCase().regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/).optional(),
+  gstin: gstinSchema.optional(),
 }).strict();
 
 export const checkoutSchema = z.object({

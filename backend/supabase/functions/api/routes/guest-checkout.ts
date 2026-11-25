@@ -1,7 +1,7 @@
 import type { Router } from "../../_shared/router.ts";
 import { admin } from "../../_shared/supabase.ts";
 import { timingSafeEqual, ApiError, Errors, fromDbError, json, readJson } from "../../_shared/http.ts";
-import { confirmPaymentSchema, parse, uuid, z } from "../../_shared/validation.ts";
+import { confirmPaymentSchema, gstinSchema, parse, uuid, z } from "../../_shared/validation.ts";
 import { getPaymentProvider } from "../../_shared/payments.ts";
 import { syncNewCheckout } from "../../_shared/checkout-sheet.ts";
 
@@ -12,6 +12,7 @@ const signup = z.object({
   full_name: z.string().trim().min(1).max(120),
   company: z.string().trim().min(1).max(120),
   phone: z.string().trim().regex(/^\+?[0-9 ()-]{7,19}$/).refine((phone) => /^\d{7,15}$/.test(phone.replace(/\D/g, ""))),
+  gstin: gstinSchema.optional(),
 }).strict();
 const proof = z.object({ access: z.string().uuid(), evidence: confirmPaymentSchema.optional() }).strict();
 const columns = "id,access_hash,pack_id,email,full_name,company,phone,amount_paise,credits,provider_order_id,provider_payment_id,payment_id,activation_status";
@@ -105,6 +106,7 @@ export function guestCheckoutRoutes(r: Router) {
     const created = await admin.rpc("create_guest_order", {
       p_pack_id: data.pack_id, p_expected_base: data.expected_amount_paise,
       p_email: data.email, p_full_name: data.full_name, p_company: data.company, p_phone: data.phone, p_access_hash: await accessHash(access),
+      p_gstin: data.gstin ?? null,
     });
     if (created.error) throw fromDbError(created.error);
     const row = created.data as GuestOrder;
