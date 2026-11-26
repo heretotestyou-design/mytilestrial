@@ -1,7 +1,7 @@
 "use client";
 
 // One "Add your photo" row (camera or upload) above the example photos. One choice per chooser.
-// Examples: phones get a swipeable slider (the next card peeks in); tablets and up a grid.
+// Examples: swipeable on phones, with a grid on larger screens.
 import { useEffect, useRef, useState } from "react";
 import { FallbackImage } from "@/components/ui/FallbackImage";
 import { Icon } from "@/components/ui/Icon";
@@ -32,6 +32,7 @@ export function PhotoChooser({ title, hint, samples, shape, file, selected, opti
   const input = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const addCard = useRef<HTMLDivElement>(null);
+  const sampleRequest = useRef<AbortController | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [missing, setMissing] = useState<Record<string, boolean>>({});
@@ -41,6 +42,8 @@ export function PhotoChooser({ title, hint, samples, shape, file, selected, opti
   const ownPreview = useObjectUrl(ownFile);
   const shown = samples.filter((s) => missing[s.src] !== true);
   const noun = title.toLowerCase();
+
+  useEffect(() => () => sampleRequest.current?.abort(), []);
 
   // Close the camera/upload menu on outside tap or Escape.
   useEffect(() => {
@@ -81,20 +84,26 @@ export function PhotoChooser({ title, hint, samples, shape, file, selected, opti
       if (optional) onChange(null);
       return;
     }
+    const request = new AbortController();
+    sampleRequest.current = request;
     setLoading(s.src);
     try {
-      onChange(await sampleToFile(s), s.src);
+      const photo = await sampleToFile(s, request.signal);
+      if (!request.signal.aborted) onChange(photo, s.src);
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Couldn't load that example.");
+      if (!request.signal.aborted) onError(e instanceof Error ? e.message : "Couldn't load that example.");
     } finally {
-      setLoading(null);
+      if (!request.signal.aborted) {
+        sampleRequest.current = null;
+        setLoading(null);
+      }
     }
   }
 
   const cell = shape === "square" ? "aspect-square" : "aspect-[4/3]";
-  // Phone: fixed-width slides with the next one peeking. sm+: grid cells.
-  const slide = cn("shrink-0 snap-start sm:w-auto", shape === "square" ? "w-[40%]" : "w-[78%]");
-  const cols = shape === "square" ? "sm:grid-cols-3" : "sm:grid-cols-2";
+  // Phone: fixed-width slides with the next one peeking. md+: grid cells.
+  const slide = cn("shrink-0 snap-start md:w-auto", shape === "square" ? "w-[40%]" : "w-[78%]");
+  const cols = shape === "square" ? "md:grid-cols-3" : "md:grid-cols-2";
 
   return (
     <section aria-label={title}>
@@ -118,7 +127,7 @@ export function PhotoChooser({ title, hint, samples, shape, file, selected, opti
           <p className={cn("text-[12.5px] text-stone-600", step !== undefined && "mt-0.5 pl-8")}>{hint}</p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
-          <span className="flex items-center gap-1 text-[11.5px] text-stone-500 sm:hidden" aria-hidden>
+          <span className="flex items-center gap-1 text-[11.5px] text-stone-500 md:hidden" aria-hidden>
             Swipe <Icon name="chevronRight" className="h-3 w-3" />
           </span>
           {file && (
@@ -206,12 +215,12 @@ export function PhotoChooser({ title, hint, samples, shape, file, selected, opti
         )}
       </div>
 
-      {/* Examples: their own row (phone slider, grid from sm). */}
+      {/* Examples: their own row (phone slider, grid from md). */}
       <div
         className={cn(
           // Phone slider bleeds to the card edge (the card has p-4) and snaps per photo.
           "no-scrollbar -mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto overscroll-x-contain px-4 pb-1",
-          "sm:mx-0 sm:grid sm:snap-none sm:overflow-visible sm:px-0 sm:pb-0",
+          "sm:-mx-6 sm:scroll-px-6 sm:px-6 md:mx-0 md:grid md:snap-none md:overflow-visible md:px-0 md:pb-0",
           cols,
         )}
       >

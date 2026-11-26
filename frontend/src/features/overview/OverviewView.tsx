@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { useAccount } from "@/features/account/hooks";
 import { GuidedTour } from "@/features/onboarding/GuidedTour";
 import { hasSeenTour, markTourSeen, TOUR_STEPS } from "@/features/onboarding/tour";
+import { useRenderJob } from "@/features/renders/hooks";
 import { RenderStudio } from "@/features/renders/RenderStudio";
 import { SpacePicker } from "@/features/renders/SpacePicker";
 import { TemplatesGallery } from "@/features/renders/TemplatesGallery";
@@ -23,6 +24,7 @@ const isTemplate = (id: string | null): id is string => RENDER_TEMPLATES.some((t
 /** Home: choose a space, browse its templates, then open the workspace. */
 export function OverviewView() {
   const { account, error } = useAccount();
+  const { busy } = useRenderJob();
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -79,12 +81,43 @@ export function OverviewView() {
 
       {error && <p className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-[14px] text-red-700">{error}</p>}
 
+      {space && (
+        <div className="mb-5 flex items-center gap-2 md:hidden">
+          <Button
+            variant="outline"
+            className="shrink-0 !pl-2.5 !pr-4"
+            aria-label={open ? "Back to templates" : "Back to all spaces"}
+            onClick={() => show(null, open ? space : undefined)}
+          >
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-black text-white">
+              <Icon name="arrowLeftSolid" className="h-3.5 w-3.5 fill-current stroke-none" />
+            </span>
+            {open ? "Templates" : "All spaces"}
+          </Button>
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">Space</span>
+            <select
+              value={space.id}
+              disabled={busy}
+              onChange={(event) => {
+                const next = findRenderSpace(event.target.value);
+                if (next) show(open ? templateId : null, next);
+              }}
+              className="h-11 w-full appearance-none rounded-full border border-ink/10 bg-white/80 pl-3.5 pr-8 text-base font-semibold text-ink shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-bronze disabled:opacity-60"
+            >
+              {RENDER_SPACES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            <Icon name="chevronRight" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-bronze-dark" />
+          </label>
+        </div>
+      )}
+
       {/* Both stay mounted so chosen photos and a running render survive going back. */}
       <motion.div {...rise(0)} hidden={open}>
         {space ? (
           <section aria-labelledby="layouts-heading">
             <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-3">
-              <Button variant="outline" size="sm" onClick={() => show(null, undefined)}>
+              <Button variant="outline" size="sm" className="hidden md:inline-flex" onClick={() => show(null, undefined)}>
                 <Icon name="chevronLeft" className="h-4 w-4" /> All spaces
               </Button>
               <h2 id="layouts-heading" className="font-serif text-2xl font-semibold text-ink">
