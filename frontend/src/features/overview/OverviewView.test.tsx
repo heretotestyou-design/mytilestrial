@@ -9,6 +9,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(search.value),
 }));
 vi.mock("@/features/account/hooks", () => ({ useAccount: () => ({}) }));
+vi.mock("@/features/renders/hooks", () => ({ useRenderJob: () => ({ busy: false }) }));
 vi.mock("@/features/renders/RenderStudio", () => ({
   RenderStudio: ({ space, onBack }: { space?: { name: string }; onBack: () => void }) => (
     <button type="button" onClick={onBack}>Back from {space?.name ?? "studio"}</button>
@@ -44,4 +45,22 @@ it("shows spaces first and keeps the chosen space through categories, studio and
     "src", "/samples/space-templates/bedroom/floor-full.webp",
   );
   expect(screen.getByRole("tab", { name: /^All/ })).toHaveAttribute("aria-selected", "true");
+});
+
+it("switches spaces from the dropdown in the gallery and keeps the template in the studio", () => {
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+  render(<OverviewView />);
+  expect(screen.queryByRole("combobox", { name: "Space" })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Kitchen" }));
+  const picker = screen.getByRole("combobox", { name: "Space" });
+  expect(picker).toHaveValue("kitchen");
+  fireEvent.change(picker, { target: { value: "bedroom" } });
+  expect(screen.getByRole("heading", { name: "Bedroom layouts" })).toBeInTheDocument();
+  expect(replace).toHaveBeenLastCalledWith("/dashboard?space=bedroom", { scroll: false });
+
+  fireEvent.click(screen.getByRole("button", { name: /Full floor/ }));
+  fireEvent.change(picker, { target: { value: "bathroom" } });
+  expect(screen.getByRole("button", { name: "Back from Bathroom" })).toBeInTheDocument();
+  expect(replace).toHaveBeenLastCalledWith("/dashboard?space=bathroom&template=floor-full", { scroll: false });
 });

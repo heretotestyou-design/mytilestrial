@@ -27,6 +27,7 @@ const paths = {
   x: "M6 6l12 12M18 6 6 18",
   chevronLeft: "m15 6-6 6 6 6",
   chevronRight: "m9 6 6 6-6 6",
+  arrowLeftSolid: "M12 5 5 12l7 7 1.5-1.5-4.5-4.5H20v-2H9l4.5-4.5L12 5Z",
   laptop: "M5 6h14v9H5zM3 18h18",
   phone: "M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm3 15h2",
   shield: "M12 3 5 6v5c0 4.5 3 8.5 7 10 4-1.5 7-5.5 7-10V6l-7-3Z",

@@ -54,7 +54,7 @@ describe("PhotoChooser", () => {
     const { onChange } = setup();
     await userEvent.setup().click(screen.getByRole("button", { name: "Use Tile 3" }));
     await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
-    expect(fetch).toHaveBeenCalledWith("/samples/floor/tiles/03.jpg");
+    expect(fetch).toHaveBeenCalledWith("/samples/floor/tiles/03.jpg", { signal: expect.any(AbortSignal) });
     const [file, example] = onChange.mock.calls[0];
     expect(file).toBeInstanceOf(File);
     expect(example).toBe("/samples/floor/tiles/03.jpg");

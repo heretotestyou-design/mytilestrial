@@ -38,7 +38,10 @@ describe("in-page pricing checkout", () => {
     history.replaceState(null, "", "/");
   });
 
-  it("reopens the selected landing plan and sends the payment proof without a password", async () => {
+  it.each([
+    { input: "", gstin: {} },
+    { input: "27abcde1234f1z5", gstin: { gstin: "27ABCDE1234F1Z5" } },
+  ])("completes landing checkout with optional GSTIN '$input'", async ({ input, gstin }) => {
     history.replaceState(null, "", "/landing?buy=starter#pricing");
     mock.guest.mockResolvedValue({ id: "checkout", access: "access", key_id: "key", order_id: "order", amount: 176882, currency: "INR", name: "MyTilesTrial" });
     mock.open.mockResolvedValue({ kind: "paid", response: { razorpay_payment_id: "pay", razorpay_order_id: "order", razorpay_signature: "signature" } });
@@ -51,9 +54,12 @@ describe("in-page pricing checkout", () => {
     await user.type(dialog.getByLabelText("Company name"), "Demo Tiles");
     await user.type(dialog.getByLabelText("Email"), "buyer@example.test");
     await user.type(dialog.getByLabelText("Mobile number"), "+919999999999");
+    const gstinField = dialog.getByLabelText("GSTIN (optional)");
+    expect(gstinField).not.toBeRequired();
+    if (input) await user.type(gstinField, input);
     await user.click(dialog.getByRole("button", { name: "Pay ₹1,768.82 with Razorpay" }));
     expect(await dialog.findByText(/activation link has been sent/i)).toBeInTheDocument();
-    expect(mock.guest).toHaveBeenCalledWith({ pack_id: "starter", expected_amount_paise: 149900, full_name: "Demo Buyer", company: "Demo Tiles", email: "buyer@example.test", phone: "+919999999999" });
+    expect(mock.guest).toHaveBeenCalledWith({ pack_id: "starter", expected_amount_paise: 149900, full_name: "Demo Buyer", company: "Demo Tiles", email: "buyer@example.test", phone: "+919999999999", ...gstin });
     expect(mock.confirmGuest).toHaveBeenCalledWith("checkout", "access", { provider_payment_id: "pay", provider_order_id: "order", signature: "signature" });
     await user.click(dialog.getByRole("button", { name: "Explore all plans" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

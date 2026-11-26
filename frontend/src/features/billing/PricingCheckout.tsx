@@ -158,7 +158,8 @@ function CheckoutDialog({ id, landing, path, close }: { id: string; landing: boo
     try {
       if (landing) {
         const buyer = { full_name: read("full_name"), company: read("company"), email: read("email"), phone: read("phone") };
-        const order = await api.guestCheckout({ ...buyer, pack_id: id, expected_amount_paise: quote.base });
+        const gstin = read("gstin").toUpperCase();
+        const order = await api.guestCheckout({ ...buyer, pack_id: id, expected_amount_paise: quote.base, ...(gstin && { gstin }) });
         if (!order.key_id || !order.order_id || order.amount !== quote.total || order.currency !== "INR") throw new Error("The checkout amount does not match this plan. Please try again.");
         setProviderOpen(true);
         const result = await openRazorpay({
@@ -279,6 +280,10 @@ function CheckoutDialog({ id, landing, path, close }: { id: string; landing: boo
                 <CheckoutInput name="company" label="Company name" autoComplete="organization" />
                 <CheckoutInput name="email" label="Email" type="email" autoComplete="email" />
                 <CheckoutInput name="phone" label="Mobile number" type="tel" autoComplete="tel" />
+                <label className="block sm:col-span-2"><span className="label">GSTIN (optional)</span>
+                  <input className="input uppercase" name="gstin" maxLength={15} autoCapitalize="characters"
+                    pattern="[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z][A-Za-z0-9][Zz][A-Za-z0-9]" />
+                </label>
               </fieldset>}
               {!landing && !contact?.phone && <CheckoutInput name="phone" label="Mobile number" type="tel" autoComplete="tel" />}
               {limit && <Button type="button" variant="outline" className="w-full" disabled={busy} onClick={raiseLimit}>Raise monthly limit to {formatPaise(limit * 100)}</Button>}

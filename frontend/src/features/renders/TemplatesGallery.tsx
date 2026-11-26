@@ -25,7 +25,7 @@ export function TemplatesGallery({ space, selectedId, onUse }: Readonly<Props>) 
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap gap-2" role="tablist" aria-label="Template categories">
+      <div className="no-scrollbar mb-4 flex gap-2 overflow-x-auto overscroll-x-contain px-1 py-1 md:mb-5 md:flex-wrap md:overflow-visible md:p-0" role="tablist" aria-label="Template categories">
         {FILTERS.map((f) => {
           const count = f === "All" ? RENDER_TEMPLATES.length : RENDER_TEMPLATES.filter((t) => t.category === f).length;
           return (
@@ -36,7 +36,7 @@ export function TemplatesGallery({ space, selectedId, onUse }: Readonly<Props>) 
               aria-selected={filter === f}
               onClick={() => setFilter(f)}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition",
+                "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition",
                 filter === f ? "border-ink bg-ink text-ivory" : "border-ink/10 bg-white/60 text-ink/70 hover:border-ink/30 hover:text-ink",
               )}
             >
@@ -48,7 +48,14 @@ export function TemplatesGallery({ space, selectedId, onUse }: Readonly<Props>) 
         })}
       </div>
 
-      <motion.ul layout className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <motion.ul
+        layout
+        aria-label="Templates"
+        className={cn(
+          "no-scrollbar grid snap-x snap-mandatory auto-cols-[clamp(13.5rem,76vw,22rem)] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain scroll-px-1 px-1 pb-3 pt-1 md:snap-none md:auto-cols-auto md:grid-flow-row md:grid-cols-2 md:gap-5 md:overflow-visible md:p-0 lg:grid-cols-3",
+          shown.length > 1 && "grid-rows-2 md:grid-rows-none",
+        )}
+      >
         <AnimatePresence mode="popLayout">
           {shown.map((t, i) => {
             const selected = t.id === selectedId;
@@ -56,6 +63,7 @@ export function TemplatesGallery({ space, selectedId, onUse }: Readonly<Props>) 
               <motion.li
                 layout
                 key={t.id}
+                className="min-w-0 snap-start"
                 data-tour={selected ? "template" : undefined}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}

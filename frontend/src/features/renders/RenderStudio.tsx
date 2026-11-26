@@ -130,7 +130,10 @@ export function RenderStudio({ templateId, space, onTemplateChange, onBack }: Re
           <button
             type="button"
             onClick={onBack}
-            className="group mb-4 inline-flex h-10 items-center gap-2 rounded-full border border-ink/15 bg-white/80 pl-2.5 pr-4 text-[14px] font-semibold text-ink shadow-soft transition hover:-translate-y-px hover:border-ink/30 hover:bg-white"
+            className={cn(
+              "group mb-4 h-10 items-center gap-2 rounded-full border border-ink/15 bg-white/80 pl-2.5 pr-4 text-[14px] font-semibold text-ink shadow-soft transition hover:-translate-y-px hover:border-ink/30 hover:bg-white",
+              space ? "hidden md:inline-flex" : "inline-flex",
+            )}
           >
             <span className="grid h-6 w-6 place-items-center rounded-full bg-ink text-ivory transition group-hover:-translate-x-0.5">
               <Icon name="chevronLeft" className="h-3.5 w-3.5" />
@@ -140,12 +143,12 @@ export function RenderStudio({ templateId, space, onTemplateChange, onBack }: Re
           <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="text-[22px] font-semibold tracking-tight text-ink">{template.name}</h2>
             <Badge tone="neutral">{category}</Badge>
-            {space && <Badge tone="neutral">{space.name}</Badge>}
+            {space && <span className="hidden md:inline-flex"><Badge tone="neutral">{space.name}</Badge></span>}
           </div>
           <p className="mt-1 text-[14px] text-stone-600">{template.description}</p>
         </div>
         {siblings.length > 1 && (
-          <div className="no-scrollbar -mx-4 flex w-[calc(100%+2rem)] gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:w-auto sm:max-w-full sm:flex-wrap sm:overflow-visible sm:px-0" role="tablist" aria-label={`${category} layouts`}>
+          <div className="no-scrollbar -mx-4 flex w-[calc(100%+2rem)] gap-1.5 overflow-x-auto overscroll-x-contain px-4 md:mx-0 md:w-auto md:max-w-full md:flex-wrap md:overflow-visible md:px-0" role="tablist" aria-label={`${category} layouts`}>
             {siblings.map((t) => (
               <button
                 key={t.id}
@@ -168,7 +171,7 @@ export function RenderStudio({ templateId, space, onTemplateChange, onBack }: Re
 
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         {/* Photos: one card per photo */}
-        <div className="space-y-5">
+        <div key={space?.id} className="space-y-5">
           {theme ? (
             <>
               <div data-tour="tile" data-slot="photo1" className={CARD}>

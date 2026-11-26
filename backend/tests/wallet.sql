@@ -8,6 +8,7 @@ declare
   studio public.payments;
   downgrade public.payments;
   guest public.guest_orders;
+  guest_without_gstin public.guest_orders;
   generation jsonb;
   render_id uuid;
   original_balance integer;
@@ -71,7 +72,11 @@ begin
     raise exception 'A failed generation did not refund exactly once';
   end if;
 
-  guest := public.create_guest_order('starter', 149900, 'guest@example.test', 'Guest buyer', 'Example Studio', '+919000000000', repeat('a', 64));
+  guest_without_gstin := public.create_guest_order('starter', 149900, 'no-gstin@example.test', 'Guest buyer', 'Example Studio', '+919000000000', repeat('b', 64), null);
+  if not exists (select 1 from public.checkout_contacts where guest_order_id = guest_without_gstin.id and gstin is null) then
+    raise exception 'Guest checkout did not save a contact without GSTIN';
+  end if;
+  guest := public.create_guest_order('starter', 149900, 'guest@example.test', 'Guest buyer', 'Example Studio', '+919000000000', repeat('a', 64), '27ABCDE1234F1Z5');
   if guest.amount_paise <> 176882 or guest.payment_id is not null then
     raise exception 'Guest order contains an unexpected total or an early payment record';
   end if;
@@ -81,6 +86,9 @@ begin
   if not exists (select 1 from public.payments where id = guest.id and user_id = buyer_id and status = 'paid')
     or (select count(*) from public.credit_transactions where payment_id = guest.id and kind = 'purchase') <> 1 then
     raise exception 'Guest checkout did not link to the buyer and settle exactly once';
+  end if;
+  if not exists (select 1 from public.checkout_contacts where guest_order_id = guest.id and gstin = '27ABCDE1234F1Z5' and user_id = buyer_id) then
+    raise exception 'Guest checkout did not retain GSTIN after settlement';
   end if;
 end;
 $$;

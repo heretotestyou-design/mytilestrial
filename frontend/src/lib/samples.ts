@@ -99,8 +99,8 @@ export function studioSamples(category: Category, slot: SampleSlot, space?: Rend
 }
 
 /** Loads an example as a File so it goes through the same upload path as the user's own photos. */
-export async function sampleToFile(sample: SampleImage): Promise<File> {
-  const res = await fetch(sample.src);
+export async function sampleToFile(sample: SampleImage, signal?: AbortSignal): Promise<File> {
+  const res = await fetch(sample.src, { signal });
   if (!res.ok) throw new Error(`${sample.label} isn't available yet.`);
   const blob = await res.blob();
   return new File([blob], sample.src.split("/").pop() ?? "example.jpg", { type: blob.type || "image/jpeg" });
