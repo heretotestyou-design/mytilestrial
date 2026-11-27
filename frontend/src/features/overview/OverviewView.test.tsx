@@ -2,14 +2,14 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { OverviewView } from "./OverviewView";
 
-const { replace, search } = vi.hoisted(() => ({ replace: vi.fn(), search: { value: "" } }));
+const { replace, search, clearStudioPreview } = vi.hoisted(() => ({ replace: vi.fn(), search: { value: "" }, clearStudioPreview: vi.fn() }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard",
   useRouter: () => ({ replace }),
   useSearchParams: () => new URLSearchParams(search.value),
 }));
 vi.mock("@/features/account/hooks", () => ({ useAccount: () => ({}) }));
-vi.mock("@/features/renders/hooks", () => ({ useRenderJob: () => ({ busy: false }) }));
+vi.mock("@/features/renders/hooks", () => ({ clearStudioPreview, useRenderJob: () => ({ busy: false }) }));
 vi.mock("@/features/renders/RenderStudio", () => ({
   RenderStudio: ({ space, onBack }: { space?: { name: string }; onBack: () => void }) => (
     <button type="button" onClick={onBack}>Back from {space?.name ?? "studio"}</button>
@@ -36,7 +36,9 @@ it("shows spaces first and keeps the chosen space through categories, studio and
   expect(screen.getByRole("button", { name: "Back from Kitchen" })).toBeInTheDocument();
   expect(replace).toHaveBeenLastCalledWith("/dashboard?space=kitchen&template=walls-all", { scroll: false });
 
+  clearStudioPreview.mockClear();
   fireEvent.click(screen.getByRole("button", { name: "Back from Kitchen" }));
+  expect(clearStudioPreview).toHaveBeenCalledOnce();
   expect(walls).toHaveAttribute("aria-selected", "true");
   fireEvent.click(screen.getByRole("button", { name: "All spaces" }));
   fireEvent.click(screen.getByRole("button", { name: "Bedroom" }));

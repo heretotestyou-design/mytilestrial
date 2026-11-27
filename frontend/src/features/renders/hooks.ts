@@ -14,11 +14,11 @@ export type RenderPhase = "idle" | "rendering";
 
 type PhotoRender = { photos: File[]; templateId: string; space?: RenderSpace["id"]; tileInRoom?: boolean; wallCorners?: WallCorners };
 type StartArgs = { templateName: string } & (PhotoRender | { floorPreview: FloorPreviewLayout });
-type JobState = { phase: RenderPhase; result: SessionRender | null; error: string | null; floorPreview: FloorPreviewLayout | null };
+type JobState = { phase: RenderPhase; result: SessionRender | null; error: string | null; floorPreview: FloorPreviewLayout | null; previewVisible: boolean };
 
 // The job lives outside React, so leaving the page mid-render (or coming back later)
 // keeps "Rendering…", the result and any error instead of resetting them.
-const IDLE: JobState = { phase: "idle", result: null, error: null, floorPreview: null };
+const IDLE: JobState = { phase: "idle", result: null, error: null, floorPreview: null, previewVisible: false };
 let job = IDLE;
 const listeners = new Set<() => void>();
 const setJob = (next: Partial<JobState>) => {
@@ -33,6 +33,11 @@ const subscribe = (l: () => void) => {
 /** Test helper / sign-out. */
 export const resetRenderJob = () => setJob(IDLE);
 
+/** A different Studio workspace should start without the previous job's preview. */
+export function clearStudioPreview() {
+  if (!job.floorPreview && job.previewVisible) setJob({ previewVisible: false });
+}
+
 /** Runs one render: send photos -> wait for the image (credits charged, refunded on failure). */
 export function useRenderJob(mode: "studio" | "floor-preview" = "studio") {
   const toast = useToast();
@@ -43,7 +48,7 @@ export function useRenderJob(mode: "studio" | "floor-preview" = "studio") {
     async (input: StartArgs) => {
       if (job.phase === "rendering") return; // never start a second, paid render by accident
       const floorPreview = "floorPreview" in input ? input.floorPreview : null;
-      setJob({ phase: "rendering", result: null, error: null, floorPreview });
+      setJob({ phase: "rendering", result: null, error: null, floorPreview, previewVisible: true });
       // Balance drops as soon as the render starts; show it.
       setTimeout(() => void revalidate("me"), 1500);
       try {
@@ -67,14 +72,14 @@ export function useRenderJob(mode: "studio" | "floor-preview" = "studio") {
     [revalidate, toast],
   );
 
-  const sameMode = (mode === "floor-preview") === Boolean(state.floorPreview);
+  const showPreview = state.previewVisible && (mode === "floor-preview") === Boolean(state.floorPreview);
   return {
     phase: state.phase,
     busy: state.phase !== "idle",
-    rendering: sameMode && state.phase === "rendering",
-    result: sameMode ? state.result : null,
-    error: sameMode ? state.error : null,
-    floorPreview: sameMode ? state.floorPreview : null,
+    rendering: showPreview && state.phase === "rendering",
+    result: showPreview ? state.result : null,
+    error: showPreview ? state.error : null,
+    floorPreview: showPreview ? state.floorPreview : null,
     start,
   };
 }

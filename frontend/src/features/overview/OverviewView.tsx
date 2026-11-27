@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { useAccount } from "@/features/account/hooks";
 import { GuidedTour } from "@/features/onboarding/GuidedTour";
 import { hasSeenTour, markTourSeen, TOUR_STEPS } from "@/features/onboarding/tour";
-import { useRenderJob } from "@/features/renders/hooks";
+import { clearStudioPreview, useRenderJob } from "@/features/renders/hooks";
 import { RenderStudio } from "@/features/renders/RenderStudio";
 import { SpacePicker } from "@/features/renders/SpacePicker";
 import { TemplatesGallery } from "@/features/renders/TemplatesGallery";
@@ -37,8 +37,10 @@ export function OverviewView() {
   const firstName = account?.profile.full_name?.split(" ")[0];
 
   function show(id: string | null, nextSpace: RenderSpace | undefined) {
+    const nextOpen = id !== null;
+    if (open !== nextOpen || (nextOpen && (id !== templateId || nextSpace?.id !== space?.id))) clearStudioPreview();
     if (id) setTemplateId(id);
-    setOpen(id !== null);
+    setOpen(nextOpen);
     setSpace(nextSpace);
     const query = new URLSearchParams();
     if (nextSpace) query.set("space", nextSpace.id);
@@ -112,7 +114,7 @@ export function OverviewView() {
         </div>
       )}
 
-      {/* Both stay mounted so chosen photos and a running render survive going back. */}
+      {/* Both stay mounted so the gallery filter and photo selections survive going back. */}
       <motion.div {...rise(0)} hidden={open}>
         {space ? (
           <section aria-labelledby="layouts-heading">
